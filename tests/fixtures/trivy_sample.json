@@ -1,0 +1,149 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "sample-app:1.4.0",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "sample-app:1.4.0 (debian 12.5)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2014-0160",
+          "PkgName": "openssl",
+          "InstalledVersion": "1.0.1e-2",
+          "FixedVersion": "1.0.1g-1",
+          "Severity": "HIGH",
+          "CVSS": {
+            "nvd": { "V2Score": 5.0, "V3Score": 7.5 },
+            "redhat": { "V3Score": 7.5 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2021-23017",
+          "PkgName": "nginx",
+          "InstalledVersion": "1.20.0-1",
+          "FixedVersion": "1.20.1-1",
+          "Severity": "CRITICAL",
+          "CVSS": {
+            "nvd": { "V3Score": 9.4 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2022-37434",
+          "PkgName": "zlib1g",
+          "InstalledVersion": "1:1.2.11.dfsg-2",
+          "FixedVersion": "1:1.2.11.dfsg-2+deb11u2",
+          "Severity": "CRITICAL",
+          "CVSS": {
+            "redhat": { "V3Score": 6.5 },
+            "ghsa": { "V3Score": 9.8 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2023-38545",
+          "PkgName": "curl",
+          "InstalledVersion": "7.88.1-10",
+          "FixedVersion": "7.88.1-10+deb12u4",
+          "Severity": "HIGH",
+          "CVSS": {
+            "nvd": { "V3Score": 9.8 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2018-1000805",
+          "PkgName": "libssh2",
+          "InstalledVersion": "1.8.0-2",
+          "Severity": "MEDIUM",
+          "CVSS": {
+            "nvd": { "V2Score": 6.4 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2016-10735",
+          "PkgName": "libtasn1",
+          "InstalledVersion": "4.13-3",
+          "FixedVersion": "4.16-1",
+          "Severity": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "Target": "app/requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-44228",
+          "PkgName": "log4j-core",
+          "InstalledVersion": "2.14.1",
+          "FixedVersion": "2.15.0",
+          "Severity": "CRITICAL",
+          "CVSS": {
+            "nvd": { "V3Score": 10.0 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2020-14343",
+          "PkgName": "PyYAML",
+          "InstalledVersion": "5.3.1",
+          "FixedVersion": "5.4",
+          "Severity": "CRITICAL",
+          "CVSS": {
+            "nvd": { "V3Score": 9.8 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2021-33503",
+          "PkgName": "urllib3",
+          "InstalledVersion": "1.26.4",
+          "FixedVersion": "1.26.5",
+          "Severity": "HIGH",
+          "CVSS": {
+            "nvd": { "V3Score": 7.5 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2022-22965",
+          "PkgName": "spring-beans",
+          "InstalledVersion": "5.3.13",
+          "FixedVersion": "5.3.18",
+          "Severity": "CRITICAL",
+          "CVSS": {
+            "nvd": { "V3Score": 9.8 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2019-11358",
+          "PkgName": "jquery",
+          "InstalledVersion": "3.3.1",
+          "FixedVersion": "3.4.0",
+          "Severity": "MEDIUM",
+          "CVSS": {
+            "nvd": { "V3Score": 6.1 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2020-8203",
+          "PkgName": "lodash",
+          "InstalledVersion": "4.17.15",
+          "FixedVersion": "4.17.20",
+          "Severity": "HIGH",
+          "CVSS": {
+            "nvd": { "V3Score": 7.4 }
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2014-0160",
+          "PkgName": "openssl",
+          "InstalledVersion": "1.0.1e-2",
+          "FixedVersion": "1.0.1g-1",
+          "Severity": "HIGH",
+          "CVSS": {
+            "nvd": { "V3Score": 7.5 }
+          }
+        }
+      ]
+    }
+  ]
+}
