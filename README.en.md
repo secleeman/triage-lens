@@ -15,6 +15,10 @@ What the priority is based on:
 
 None of these require an API key.
 
+Optionally, `--ai` adds a one- or two-line note to each finding saying what to
+actually do about it. That part uses the Claude API, so it needs your own API key
+and is billed to you. Without `--ai`, no request is made.
+
 ## Requirements
 
 - Python 3.11 or later
@@ -86,8 +90,97 @@ Omit `-o` to print to standard output.
 | `-o`, `--output` | Output Markdown file | standard output |
 | `--top N` | How many P2 / P3 rows to show (P0 / P1 always show all) | 5 |
 | `--lang {ja,en}` | Report language | `ja` (Japanese) |
+| `--ai` | Add AI-generated remediation notes | off |
+| `--ai-limit N` | Maximum number of findings to annotate | 50 |
+| `--ai-model NAME` | Model used for the notes | `claude-haiku-4-5` |
 
 `--lang` controls the report body only. Error messages and `--help` text are in Japanese.
+
+## AI-generated remediation notes (`--ai`)
+
+A priority tells you what to fix first. It does not tell you what to do about it.
+This option asks the Claude API to write one or two lines per finding and puts them
+in the report.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+triage-lens report trivy-result.json --ai --lang en -o triage-report.md
+```
+
+The notes appear underneath each rank's table:
+
+```markdown
+### Suggested next steps (AI-generated)
+
+- **CVE-2021-44228** (log4j-core): Upgrade to 2.15.0. ...
+```
+
+### Prerequisites
+
+- **The key is read from the environment.** There is no command-line flag for it,
+  because that would leave the key in shell history, `ps` output, and CI logs
+- **If the key is not set, the feature simply does not run.** It is not an error:
+  one line goes to standard error and the report is produced as usual
+- Identity-linked keys (issued by organisation accounts) also need a workspace id
+
+| Environment variable | Required | Purpose |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Yes, to use `--ai` | Claude API key |
+| `ANTHROPIC_WORKSPACE_ID` | Only for organisation keys | Workspace the usage is billed to |
+
+### The AI does not decide the priority
+
+**P0-P3 are derived mechanically from public data (KEV / EPSS / CVSS) only.**
+The model never assigns or revises a priority. It only writes what to do about a
+finding whose priority has already been decided.
+
+The notes are reference information. The report says so at the end, together with
+the model that produced them.
+
+### What is sent to Anthropic
+
+The payload is fixed and minimal.
+
+| Field | Sent |
+| --- | --- |
+| CVE ID | Yes |
+| Package name | Yes |
+| Installed / fixed version | Yes |
+| CVSS / EPSS / KEV listing | Yes |
+| Priority rank (P0-P3) | Yes |
+| **Location (file path / purl)** | **No** |
+| **Target name (project or image name)** | **No** |
+| The input file itself | No |
+
+Location and target name are withheld because they would reveal how your systems
+are put together.
+
+### Cost
+
+You pay for it, so the tool tries not to spend more than it needs to.
+
+- **Only P0 and P1 findings** are annotated - those are the ranks shown in full
+- **At most 50 findings** by default (`--ai-limit` changes this)
+- Findings are sent **20 at a time**, never one request per finding
+- Identical payloads are requested **once** and reused, so the same CVE found in
+  several places is billed once
+
+With the default `claude-haiku-4-5`, annotating 50 findings costs a few cents.
+
+### When it does not work
+
+**The report is always produced and the exit code stays 0.** You lose the notes,
+not the triage.
+
+| What happened | Result |
+| --- | --- |
+| No API key set | Skipped without any request; one line on standard error |
+| Invalid key or no permission | Report produced without notes |
+| Rate limited | Waits per `retry-after`, then gives up on that batch |
+| Cannot connect / malformed response | Same as above |
+| Only some findings annotated | Whatever came back is used |
+
+The whole AI step is time-limited so a struggling API cannot make the command hang.
 
 ## Example output
 
@@ -216,7 +309,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (Phase 2) can and cannot do
+## What this version (v0.3.0) can and cannot do
 
 It can:
 
@@ -224,6 +317,7 @@ It can:
 - Read CycloneDX (JSON) SBOMs, with automatic format detection
 - Prioritise using EPSS and CISA KEV
 - Produce Markdown reports in Japanese and English
+- **Add AI-generated remediation notes (`--ai`, only when an API key is set)**
 
 It cannot yet (planned for later phases):
 
@@ -232,6 +326,7 @@ It cannot yet (planned for later phases):
 - Show error messages and `--help` in English
 - Produce reports in languages other than Japanese and English
 - Use a config file or a web UI
+- Have the AI produce patches or open fix pull requests
 
 ## License
 

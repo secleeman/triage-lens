@@ -8,13 +8,22 @@ from pathlib import Path
 
 import httpx
 
+from .ai import (
+    API_KEY_ENV,
+    DEFAULT_LIMIT,
+    DEFAULT_MODEL,
+    annotate,
+    read_api_key,
+    read_workspace_id,
+    select_targets,
+)
 from .epss import fetch_epss_scores
 from .errors import InputError
 from .http_client import build_client
 from .i18n import DEFAULT_LANG, SUPPORTED_LANGS
 from .kev import load_kev_ids
 from .loader import load_scan
-from .models import EnrichedVulnerability, ScanInput
+from .models import AiAnnotation, EnrichedVulnerability, ScanInput
 from .report import DEFAULT_TOP_N, render_report
 from .scoring import prioritize
 
@@ -59,6 +68,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_LANG,
         help=f"レポートの言語（既定: {DEFAULT_LANG}）",
     )
+    report_parser.add_argument(
+        "--ai",
+        action="store_true",
+        help=f"各CVEにAIが生成した対応方針コメントを付ける（環境変数 {API_KEY_ENV} が必要）",
+    )
+    report_parser.add_argument(
+        "--ai-limit",
+        type=_positive_int,
+        default=DEFAULT_LIMIT,
+        metavar="N",
+        help=f"AIコメントを生成する上限件数（既定: {DEFAULT_LIMIT}）",
+    )
+    report_parser.add_argument(
+        "--ai-model",
+        default=DEFAULT_MODEL,
+        metavar="NAME",
+        help=f"AIコメントの生成に使うモデル（既定: {DEFAULT_MODEL}）",
+    )
     report_parser.set_defaults(handler=run_report)
     return parser
 
@@ -77,6 +104,11 @@ def main(argv: list[str] | None = None, *, client: httpx.Client | None = None) -
 def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) -> int:
     scan = load_scan(args.input)
     items, epss_complete, kev_source = enrich(scan, client=client, lang=args.lang)
+
+    ai_annotation: AiAnnotation | None = None
+    if args.ai:
+        items, ai_annotation = add_ai_comments(args, items, client=client)
+
     report = render_report(
         items,
         artifact_name=scan.artifact_name,
@@ -85,9 +117,50 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         epss_complete=epss_complete,
         kev_source=kev_source,
         lang=args.lang,
+        ai=ai_annotation,
     )
     _write_output(report, args.output)
     return EXIT_OK
+
+
+def add_ai_comments(
+    args: argparse.Namespace,
+    items: list[EnrichedVulnerability],
+    *,
+    client: httpx.Client | None = None,
+) -> tuple[list[EnrichedVulnerability], AiAnnotation | None]:
+    """AIコメントを付ける。何が起きてもレポートは出す（終了コードも変えない）。
+
+    生成しなかった / できなかったことは標準エラーに1行だけ書く。黙って機能が
+    消えると「静かに壊れた」状態になり、利用者が理由に辿り着けないため。
+    """
+    api_key = read_api_key()
+    if api_key is None:
+        _write_error(f"{API_KEY_ENV} が未設定のためAIコメントをスキップしました。")
+        return list(items), None
+
+    targets = select_targets(items, limit=args.ai_limit)
+    if not targets:
+        _write_error("AIコメントの対象となる P0 / P1 の検出がないため、生成しませんでした。")
+        return list(items), None
+
+    _write_error(f"{len(targets)}件に対してAIコメントを生成します（モデル: {args.ai_model}）。")
+
+    with ExitStack() as stack:
+        ai_client = client if client is not None else stack.enter_context(build_client())
+        annotated, annotation = annotate(
+            items,
+            api_key=api_key,
+            lang=args.lang,
+            model=args.ai_model,
+            limit=args.ai_limit,
+            workspace_id=read_workspace_id(),
+            client=ai_client,
+        )
+
+    if annotation is None:
+        _write_error("AIコメントを生成できませんでした。AIコメント無しでレポートを出力します。")
+    return annotated, annotation
 
 
 def enrich(

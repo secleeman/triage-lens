@@ -1,7 +1,10 @@
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 
 from conftest import make_client
+from triage_lens import http_client
 from triage_lens.errors import FetchError
 from triage_lens.http_client import get_json
 
@@ -102,3 +105,139 @@ def test_クエリパラメータが送られる():
         get_json("https://example.invalid/data", params={"cve": "CVE-2020-0001"}, client=client)
 
     assert seen[0].params["cve"] == "CVE-2020-0001"
+
+
+# --- post_json の実行時間の上限 -----------------------------------------
+
+
+def test_残り時間を超える待機はしない(recorded_sleeps, monkeypatch):
+    monkeypatch.setattr(http_client, "monotonic", lambda: 0.0)
+
+    def handler(request):
+        return httpx.Response(429, headers={"retry-after": "60"}, json={"error": "x"})
+
+    with make_client(handler) as client, pytest.raises(FetchError):
+        http_client.post_json("https://example.test/x", payload={}, client=client, time_budget=5.0)
+
+    assert recorded_sleeps == [5.0, 5.0]
+
+
+def test_残り時間を使い切ったらリトライしない(recorded_sleeps, monkeypatch):
+    clock = iter([0.0, 0.0, 999.0, 999.0])
+    monkeypatch.setattr(http_client, "monotonic", lambda: next(clock))
+    attempts = []
+
+    def handler(request):
+        attempts.append(request)
+        return httpx.Response(500, json={"error": "x"})
+
+    with make_client(handler) as client, pytest.raises(FetchError):
+        http_client.post_json("https://example.test/x", payload={}, client=client, time_budget=10.0)
+
+    assert len(attempts) == 1
+
+
+def test_時間の上限を渡さなければ従来どおり待つ(recorded_sleeps):
+    def handler(request):
+        return httpx.Response(500, json={"error": "x"})
+
+    with make_client(handler) as client, pytest.raises(FetchError):
+        http_client.post_json("https://example.test/x", payload={}, client=client)
+
+    assert recorded_sleeps == [1.0, 2.0]
+
+
+# --- retry-after の書き方（RFC 9110 は2種類を認める） --------------------
+
+
+def _retry_after(value):
+    return http_client.retry_after_seconds(httpx.Response(429, headers={"retry-after": value}))
+
+
+def test_retry_afterの秒数形式を読む():
+    assert _retry_after("7") == 7.0
+
+
+def test_retry_afterのHTTP_date形式を読む(monkeypatch):
+    monkeypatch.setattr(http_client, "now", lambda: datetime(2026, 10, 21, 7, 27, 30, tzinfo=UTC))
+
+    assert _retry_after("Wed, 21 Oct 2026 07:28:00 GMT") == 30.0
+
+
+def test_過ぎた時刻のHTTP_dateは待たない(monkeypatch):
+    monkeypatch.setattr(http_client, "now", lambda: datetime(2026, 10, 22, 0, 0, 0, tzinfo=UTC))
+
+    assert _retry_after("Wed, 21 Oct 2026 07:28:00 GMT") == 0.0
+
+
+def test_遠すぎるHTTP_dateは上限で頭打ちにする(monkeypatch):
+    monkeypatch.setattr(http_client, "now", lambda: datetime(2026, 10, 1, 0, 0, 0, tzinfo=UTC))
+
+    assert _retry_after("Wed, 21 Oct 2026 07:28:00 GMT") == http_client.MAX_RETRY_AFTER_SECONDS
+
+
+def test_読めないretry_afterはバックオフに任せる():
+    # HTTP ヘッダは ASCII しか運べないため、壊れた値も ASCII で表す
+    assert _retry_after("later") is None
+    assert _retry_after("nan") is None
+    assert _retry_after("") is None
+
+
+# --- 1リクエストのタイムアウト配分 --------------------------------------
+
+
+def test_残り時間はフェーズ数で割って配分する():
+    with httpx.Client(timeout=20.0) as client:
+        timeout = http_client._timeout(client, 8.0)
+
+    # 接続 / 送信 / 受信 / プール待ちの合計が残り時間を超えない
+    assert timeout.read * http_client.TIMEOUT_PHASES <= 8.0
+    assert timeout.connect == timeout.read == timeout.write == timeout.pool
+
+
+def test_残り時間が十分ならクライアントの既定を超えない():
+    with httpx.Client(timeout=20.0) as client:
+        timeout = http_client._timeout(client, 4000.0)
+
+    assert timeout.read == 20.0
+
+
+# --- リトライして意味のあるステータスかどうか ---------------------------
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 405, 413, 415, 422])
+def test_やり直しても変わらない4xxはリトライしない(status):
+    attempts = []
+
+    def handler(request):
+        attempts.append(request)
+        return httpx.Response(status, json={"error": "x"})
+
+    with make_client(handler) as client, pytest.raises(FetchError):
+        http_client.post_json("https://example.test/x", payload={}, client=client)
+
+    assert len(attempts) == 1
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
+def test_一時的な失敗はリトライする(status):
+    attempts = []
+
+    def handler(request):
+        attempts.append(request)
+        return httpx.Response(status, json={"error": "x"})
+
+    with make_client(handler) as client, pytest.raises(FetchError):
+        http_client.post_json("https://example.test/x", payload={}, client=client)
+
+    assert len(attempts) == 3
+
+
+def test_クライアントのフェーズごとの設定を伸ばさない():
+    timeout = httpx.Timeout(connect=0.1, read=20.0, write=5.0, pool=20.0)
+    with httpx.Client(timeout=timeout) as client:
+        capped = http_client._timeout(client, 8.0)
+
+    assert capped.connect == 0.1
+    assert capped.write == 2.0
+    assert capped.read == 2.0

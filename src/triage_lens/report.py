@@ -9,6 +9,7 @@ from .models import (
     UNKNOWN_NAME,
     UNKNOWN_TARGET,
     UNKNOWN_VALUE,
+    AiAnnotation,
     EnrichedVulnerability,
     Priority,
 )
@@ -51,6 +52,7 @@ def render_report(
     epss_complete: bool = True,
     kev_source: str = "",
     lang: str = DEFAULT_LANG,
+    ai: AiAnnotation | None = None,
 ) -> str:
     """優先度付きの脆弱性一覧から Markdown レポートを組み立てる。"""
     text = catalog(lang)
@@ -78,6 +80,7 @@ def render_report(
             lines += _priority_section(text, items, priority, counts[priority], limit)
 
     lines += _footer(text)
+    lines += _ai_footer(text, ai)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -138,7 +141,31 @@ def _priority_section(
     lines += [text("table_header"), _TABLE_DIVIDER]
     lines += [_row(text, item) for item in shown]
     lines.append("")
+    lines += _ai_comment_lines(text, shown)
     return lines
+
+
+def _ai_comment_lines(text: Catalog, shown: Sequence[EnrichedVulnerability]) -> list[str]:
+    """AIコメントは一覧表の下に置く。列を増やすと表が横に伸びて読めなくなるため。"""
+    commented = [item for item in shown if item.ai_comment]
+    if not commented:
+        return []
+
+    # 同じCVEが複数の検出箇所で見つかると、検出箇所を書かないこの行は同じ文になる。
+    # 一覧表には両方が出ているので、ここで同じ行を繰り返さない。
+    rendered: list[str] = []
+    for item in commented:
+        line = text(
+            "ai_comment_item",
+            cve=_escape(item.vuln.cve_id),
+            pkg=_field(text, item.vuln.pkg_name),
+            # `ai_comment` は生成時に無害化済みなので、ここで再エスケープしない
+            comment=item.ai_comment,
+        )
+        if line not in rendered:
+            rendered.append(line)
+
+    return [f"### {text('ai_section_heading')}", "", *rendered, ""]
 
 
 def _action(text: Catalog, priority: Priority) -> str:
@@ -193,6 +220,25 @@ def _footer(text: Catalog) -> list[str]:
         text("footer_sources"),
         "",
     ]
+    return lines
+
+
+def _ai_footer(text: Catalog, ai: AiAnnotation | None) -> list[str]:
+    """AIコメントを1件でも載せたときだけ、免責と生成条件を書く。"""
+    if ai is None or ai.generated == 0:
+        return []
+
+    lines = [
+        f"## {text('ai_footer_heading')}",
+        "",
+        text("ai_disclaimer"),
+        "",
+        text("ai_model_note", model=_escape(ai.model)),
+        text("ai_scope_note"),
+    ]
+    if ai.limited:
+        lines.append(text("ai_limit_note", count=ai.target_count))
+    lines.append("")
     return lines
 
 

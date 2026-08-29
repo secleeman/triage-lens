@@ -10,3 +10,8 @@ dist/
 .coverage
 htmlcov/
 triage-report.md
+
+# APIキーなどの秘密情報（絶対にコミットしない）
+.apikey
+.apikey.*
+*.apikey

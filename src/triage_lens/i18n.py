@@ -82,6 +82,16 @@ _JA: dict[str, str] = {
     "note_cvss_missing": "CVSSが不明で判定に使えていない",
     "notes_separator": " / ",
     "notes_wrapper": "{reason}［{notes}］",
+    # AIによる対応方針コメント（--ai）
+    "ai_section_heading": "対応方針（AI生成）",
+    "ai_comment_item": "- **{cve}**（{pkg}）: {comment}",
+    "ai_footer_heading": "対応方針コメントについて",
+    "ai_disclaimer": (
+        "対応方針コメントは AI が生成した参考情報です。実行前に内容をご確認ください。"
+    ),
+    "ai_model_note": "- 生成モデル: {model}",
+    "ai_scope_note": "- 対象: P0 と P1 の検出のみ",
+    "ai_limit_note": "- 上限により {count}件までを対象に生成しました",
     # 末尾の説明
     "footer_heading": "優先度の付け方",
     "footer_table_header": "| 優先度 | 条件 |",
@@ -154,6 +164,16 @@ _EN: dict[str, str] = {
     "note_cvss_missing": "CVSS unknown, not used in this decision",
     "notes_separator": " / ",
     "notes_wrapper": "{reason} [{notes}]",
+    "ai_section_heading": "Suggested next steps (AI-generated)",
+    "ai_comment_item": "- **{cve}** ({pkg}): {comment}",
+    "ai_footer_heading": "About the suggested next steps",
+    "ai_disclaimer": (
+        "The suggested next steps are AI-generated reference information. "
+        "Review them before acting."
+    ),
+    "ai_model_note": "- Model: {model}",
+    "ai_scope_note": "- Scope: P0 and P1 findings only",
+    "ai_limit_note": "- Limited to the first {count} findings",
     "footer_heading": "How priorities are assigned",
     "footer_table_header": "| Priority | Condition |",
     "condition_p0": "Listed in CISA KEV - exploitation has been observed in the wild",

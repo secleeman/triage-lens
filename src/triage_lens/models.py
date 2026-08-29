@@ -64,6 +64,23 @@ class EnrichedVulnerability:
     in_kev: bool | None
     priority: Priority
     reason: str
+    #: `--ai` で生成した対応方針コメント（無効・失敗時は None）。
+    #: 既に無害化済みの文字列が入るため、レポート側で再エスケープしない。
+    ai_comment: str | None = None
+
+
+@dataclass(frozen=True)
+class AiAnnotation:
+    """AIコメントの生成結果のうち、レポートに書くもの。"""
+
+    #: 生成に使ったモデル。「これは何が書いたのか」を後から追えるようにする
+    model: str
+    #: 実際にコメントが付いた件数
+    generated: int
+    #: 生成の対象にした件数
+    target_count: int
+    #: 上限（--ai-limit）で対象を絞ったか
+    limited: bool
 
 
 @dataclass(frozen=True)
