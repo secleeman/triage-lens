@@ -14,20 +14,19 @@ class Priority(Enum):
 
     @property
     def label(self) -> str:
-        """`P0 (Act now)` のような英語ラベル。"""
-        return f"{self.name} ({_PRIORITY_LABELS[self][0]})"
+        """`P0 (Act now)` のようなランク名。
 
-    @property
-    def action(self) -> str:
-        """日本語の行動指針。"""
-        return _PRIORITY_LABELS[self][1]
+        ランクの識別子なので日英で共通にする（翻訳しない）。行動指針の文言は
+        言語ごとに変わるため `i18n` 側に置いてある。
+        """
+        return f"{self.name} ({_PRIORITY_LABELS[self]})"
 
 
-_PRIORITY_LABELS: dict[Priority, tuple[str, str]] = {
-    Priority.P0: ("Act now", "今すぐ対応"),
-    Priority.P1: ("High", "優先的に対応"),
-    Priority.P2: ("Medium", "計画的に対応"),
-    Priority.P3: ("Low", "経過観察"),
+_PRIORITY_LABELS: dict[Priority, str] = {
+    Priority.P0: "Act now",
+    Priority.P1: "High",
+    Priority.P2: "Medium",
+    Priority.P3: "Low",
 }
 
 
@@ -41,6 +40,10 @@ class Vulnerability:
     fixed_version: str | None
     cvss: float | None
     target: str
+    #: 修正バージョンの有無そのものが分かっているか。
+    #: CycloneDX には「修正版が存在しない」ことを明示する項目が無いため、
+    #: 修正版が読み取れなかったときに「修正版なし」と断定せず「不明」と書くために使う。
+    fixed_version_known: bool = True
 
     @property
     def dedupe_key(self) -> tuple[str, str, str, str]:
@@ -69,3 +72,10 @@ class ScanInput:
 
     artifact_name: str
     vulnerabilities: list[Vulnerability]
+
+
+#: 値が読み取れなかったときに入れる表記。
+#: レポート言語に合わせて `report` 側で差し替えるため、定数として1箇所にまとめる。
+UNKNOWN_NAME = "(名称不明)"
+UNKNOWN_VALUE = "(不明)"
+UNKNOWN_TARGET = "(検出箇所不明)"

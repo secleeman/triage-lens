@@ -1,0 +1,181 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:3f1a0000-0000-4000-8000-000000000001",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-29T03:00:00Z",
+    "component": {
+      "bom-ref": "root-component",
+      "type": "container",
+      "name": "sample-app",
+      "version": "1.4.0"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:deb/debian/openssl@1.0.1e-2",
+      "type": "library",
+      "name": "openssl",
+      "version": "1.0.1e-2",
+      "purl": "pkg:deb/debian/openssl@1.0.1e-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/zlib1g@1.2.11.dfsg-2",
+      "type": "library",
+      "name": "zlib1g",
+      "version": "1:1.2.11.dfsg-2",
+      "purl": "pkg:deb/debian/zlib1g@1.2.11.dfsg-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libssh2@1.8.0-2",
+      "type": "library",
+      "name": "libssh2",
+      "version": "1.8.0-2",
+      "purl": "pkg:deb/debian/libssh2@1.8.0-2"
+    },
+    {
+      "bom-ref": "app-bundle",
+      "type": "application",
+      "name": "sample-app-bundle",
+      "version": "1.4.0",
+      "components": [
+        {
+          "bom-ref": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+          "type": "library",
+          "name": "log4j-core",
+          "version": "2.14.1",
+          "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
+        },
+        {
+          "bom-ref": "pkg:pypi/pyyaml@5.3.1",
+          "type": "library",
+          "name": "PyYAML",
+          "version": "5.3.1",
+          "purl": "pkg:pypi/pyyaml@5.3.1"
+        },
+        {
+          "bom-ref": "pkg:npm/lodash@4.17.15",
+          "type": "library",
+          "name": "lodash",
+          "version": "4.17.15",
+          "purl": "pkg:npm/lodash@4.17.15"
+        }
+      ]
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000101",
+      "id": "CVE-2021-44228",
+      "source": { "name": "nvd" },
+      "ratings": [
+        { "source": { "name": "ghsa" }, "score": 9.8, "severity": "critical", "method": "CVSSv3" },
+        { "source": { "name": "nvd" }, "score": 10.0, "severity": "critical", "method": "CVSSv31" }
+      ],
+      "affects": [
+        {
+          "ref": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+          "versions": [
+            { "version": "2.14.1", "status": "affected" },
+            { "version": "2.15.0", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000102",
+      "id": "CVE-2014-0160",
+      "source": { "name": "nvd" },
+      "ratings": [
+        { "source": { "name": "nvd" }, "score": 5.0, "method": "CVSSv2" },
+        { "source": { "name": "nvd" }, "score": 7.5, "severity": "high", "method": "CVSSv31" }
+      ],
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/openssl@1.0.1e-2",
+          "versions": [
+            { "version": "1.0.1e-2", "status": "affected" },
+            { "range": ">=1.0.1g-1", "status": "unaffected" }
+          ]
+        },
+        {
+          "ref": "app-bundle",
+          "versions": [{ "version": "1.4.0", "status": "affected" }]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000103",
+      "id": "CVE-2022-37434",
+      "ratings": [
+        { "source": { "name": "redhat" }, "score": 6.5, "method": "CVSSv3" },
+        { "source": { "name": "ghsa" }, "score": 9.8, "method": "CVSSv31" }
+      ],
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/zlib1g@1.2.11.dfsg-2",
+          "versions": [
+            { "version": "1:1.2.11.dfsg-2", "status": "affected" },
+            { "version": "1:1.2.11.dfsg-2+deb11u2", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000104",
+      "id": "CVE-2018-1000805",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 6.4, "method": "CVSSv2" }],
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/libssh2@1.8.0-2",
+          "versions": [{ "version": "1.8.0-2", "status": "affected" }]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000105",
+      "id": "CVE-2020-14343",
+      "ratings": [{ "source": { "name": "nvd" }, "severity": "critical", "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:pypi/pyyaml@5.3.1",
+          "versions": [
+            { "version": "5.3.1", "status": "affected" },
+            { "version": "5.4", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000106",
+      "id": "CVE-2020-8203",
+      "ratings": [{ "source": { "name": "internal" }, "score": 7.4, "method": "other" }],
+      "affects": [
+        {
+          "ref": "pkg:npm/lodash@4.17.15",
+          "versions": [
+            { "version": "4.17.15", "status": "affected" },
+            { "version": "4.17.20", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000107",
+      "id": "CVE-2021-23017",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 9.4, "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:deb/debian/nginx@1.20.0-1",
+          "versions": [{ "version": "1.20.0-1", "status": "affected" }]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:3f1a0000-0000-4000-8000-000000000108",
+      "id": "CVE-2019-11358",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 6.1, "method": "CVSSv31" }]
+    }
+  ]
+}

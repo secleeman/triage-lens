@@ -1,12 +1,17 @@
 """Trivy の JSON 出力（`--format json`）を読み込む。"""
 
-import json
-import math
 from pathlib import Path
 from typing import Any
 
 from .errors import InputError
-from .models import ScanInput, Vulnerability
+from .models import UNKNOWN_NAME, UNKNOWN_TARGET, UNKNOWN_VALUE, ScanInput, Vulnerability
+from .parsing import (
+    as_cvss_score,
+    as_optional_text,
+    as_text,
+    deduplicate,
+    read_json_document,
+)
 
 _UNSUPPORTED_FORMAT_MESSAGE = (
     "Trivy の JSON 出力ではないようです。"
@@ -14,32 +19,18 @@ _UNSUPPORTED_FORMAT_MESSAGE = (
 )
 
 
+def looks_like_trivy(document: Any) -> bool:
+    """Trivy の JSON 出力かどうかを判定する。"""
+    return isinstance(document, dict) and "Results" in document
+
+
 def load_scan(path: str | Path) -> ScanInput:
     """Trivy の JSON ファイルを読み込んで `ScanInput` を返す。
 
     読めない・想定形式でない場合は `InputError` を送出する。
+    形式を判別して読みたい場合は `loader.load_scan` を使う。
     """
-    path = Path(path)
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise InputError(f"入力ファイルが見つかりません: {path}") from exc
-    except UnicodeDecodeError as exc:
-        raise InputError(
-            f"入力ファイルを UTF-8 のテキストとして読み込めませんでした: {path}"
-            "（テキストではないファイルを指定していませんか）"
-        ) from exc
-    except OSError as exc:
-        raise InputError(f"入力ファイルを読み込めませんでした: {path} ({exc})") from exc
-
-    try:
-        document = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise InputError(
-            f"JSON として読み込めませんでした: {path} （{exc.msg} / {exc.lineno}行目）"
-        ) from exc
-
-    return parse_scan(document)
+    return parse_scan(read_json_document(path))
 
 
 def parse_scan(document: Any) -> ScanInput:
@@ -48,16 +39,14 @@ def parse_scan(document: Any) -> ScanInput:
     どんな構造の入力を渡されても、送出するのは `InputError` だけにする
     （利用者にスタックトレースを見せないため）。
     """
-    if not isinstance(document, dict) or "Results" not in document:
+    if not looks_like_trivy(document):
         raise InputError(_UNSUPPORTED_FORMAT_MESSAGE)
 
     results = document.get("Results") or []
     if not isinstance(results, list):
         raise InputError(f"{_UNSUPPORTED_FORMAT_MESSAGE}（Results が一覧ではありません）")
 
-    artifact_name = document.get("ArtifactName")
-    if not isinstance(artifact_name, str) or not artifact_name:
-        artifact_name = "(名称不明)"
+    artifact_name = as_text(document.get("ArtifactName"), UNKNOWN_NAME)
 
     try:
         vulnerabilities = _collect_vulnerabilities(results)
@@ -74,7 +63,6 @@ def parse_scan(document: Any) -> ScanInput:
 
 def _collect_vulnerabilities(results: list[Any]) -> list[Vulnerability]:
     vulnerabilities: list[Vulnerability] = []
-    seen: set[tuple[str, str, str, str]] = set()
 
     for index, result in enumerate(results):
         if not isinstance(result, dict):
@@ -90,15 +78,13 @@ def _collect_vulnerabilities(results: list[Any]) -> list[Vulnerability]:
                 "`trivy image --format json` の出力をそのまま指定してください。"
             )
 
-        target = _as_text(result.get("Target"), "(検出箇所不明)")
+        target = as_text(result.get("Target"), UNKNOWN_TARGET)
         for entry in entries:
             vuln = _parse_vulnerability(entry, target)
-            if vuln is None or vuln.dedupe_key in seen:
-                continue
-            seen.add(vuln.dedupe_key)
-            vulnerabilities.append(vuln)
+            if vuln is not None:
+                vulnerabilities.append(vuln)
 
-    return vulnerabilities
+    return deduplicate(vulnerabilities)
 
 
 def _parse_vulnerability(entry: Any, target: str) -> Vulnerability | None:
@@ -110,11 +96,14 @@ def _parse_vulnerability(entry: Any, target: str) -> Vulnerability | None:
 
     return Vulnerability(
         cve_id=cve_id,
-        pkg_name=_as_text(entry.get("PkgName"), "(不明)"),
-        installed_version=_as_text(entry.get("InstalledVersion"), "(不明)"),
-        fixed_version=_as_optional_text(entry.get("FixedVersion")),
+        pkg_name=as_text(entry.get("PkgName"), UNKNOWN_VALUE),
+        installed_version=as_text(entry.get("InstalledVersion"), UNKNOWN_VALUE),
+        fixed_version=as_optional_text(entry.get("FixedVersion")),
         cvss=extract_cvss(entry.get("CVSS")),
         target=target,
+        # Trivy は修正版が無いときに FixedVersion を省略する。
+        # 「書かれていない＝修正版なし」と読んでよい。
+        fixed_version_known=True,
     )
 
 
@@ -130,7 +119,7 @@ def extract_cvss(cvss_field: Any) -> float | None:
     for score_key in ("V3Score", "V2Score"):
         nvd = cvss_field.get("nvd")
         if isinstance(nvd, dict):
-            score = _as_score(nvd.get(score_key))
+            score = as_cvss_score(nvd.get(score_key))
             if score is not None:
                 return score
 
@@ -138,28 +127,10 @@ def extract_cvss(cvss_field: Any) -> float | None:
             score
             for vendor in cvss_field.values()
             if isinstance(vendor, dict)
-            for score in [_as_score(vendor.get(score_key))]
+            for score in [as_cvss_score(vendor.get(score_key))]
             if score is not None
         ]
         if scores:
             return max(scores)
 
     return None
-
-
-def _as_score(value: Any) -> float | None:
-    """CVSS スコアとして妥当な値だけを返す（NaN / 無限大 / 範囲外は無効）。"""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    score = float(value)
-    if not math.isfinite(score) or score < 0.0 or score > 10.0:
-        return None
-    return score
-
-
-def _as_text(value: Any, fallback: str) -> str:
-    return value if isinstance(value, str) and value else fallback
-
-
-def _as_optional_text(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None

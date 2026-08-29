@@ -11,11 +11,12 @@ import httpx
 from .epss import fetch_epss_scores
 from .errors import InputError
 from .http_client import build_client
+from .i18n import DEFAULT_LANG, SUPPORTED_LANGS
 from .kev import load_kev_ids
+from .loader import load_scan
 from .models import EnrichedVulnerability, ScanInput
 from .report import DEFAULT_TOP_N, render_report
 from .scoring import prioritize
-from .trivy import load_scan
 
 #: 正常終了
 EXIT_OK = 0
@@ -33,9 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     report_parser = subparsers.add_parser(
         "report",
-        help="Trivy の JSON 出力からトリアージレポート（Markdown）を作る",
+        help="スキャナ出力（Trivy JSON / CycloneDX JSON）からトリアージレポート（Markdown）を作る",
     )
-    report_parser.add_argument("input", help="Trivy の --format json 出力ファイル")
+    report_parser.add_argument(
+        "input",
+        help="スキャナ出力のJSONファイル（Trivy の --format json / CycloneDX。形式は自動判別）",
+    )
     report_parser.add_argument(
         "-o",
         "--output",
@@ -48,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_TOP_N,
         metavar="N",
         help=f"P2 / P3 で表示する件数（既定: {DEFAULT_TOP_N}）",
+    )
+    report_parser.add_argument(
+        "--lang",
+        choices=SUPPORTED_LANGS,
+        default=DEFAULT_LANG,
+        help=f"レポートの言語（既定: {DEFAULT_LANG}）",
     )
     report_parser.set_defaults(handler=run_report)
     return parser
@@ -66,7 +76,7 @@ def main(argv: list[str] | None = None, *, client: httpx.Client | None = None) -
 
 def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) -> int:
     scan = load_scan(args.input)
-    items, epss_complete, kev_source = enrich(scan, client=client)
+    items, epss_complete, kev_source = enrich(scan, client=client, lang=args.lang)
     report = render_report(
         items,
         artifact_name=scan.artifact_name,
@@ -74,13 +84,14 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         top_n=args.top,
         epss_complete=epss_complete,
         kev_source=kev_source,
+        lang=args.lang,
     )
     _write_output(report, args.output)
     return EXIT_OK
 
 
 def enrich(
-    scan: ScanInput, *, client: httpx.Client | None = None
+    scan: ScanInput, *, client: httpx.Client | None = None, lang: str = DEFAULT_LANG
 ) -> tuple[list[EnrichedVulnerability], bool, str]:
     """公開データを引き当てて優先度を付ける。取得できなくても処理は継続する。"""
     if not scan.vulnerabilities:
@@ -94,7 +105,7 @@ def enrich(
             [vuln.cve_id for vuln in scan.vulnerabilities], client=client
         )
 
-    items = prioritize(scan.vulnerabilities, epss_scores, kev_ids)
+    items = prioritize(scan.vulnerabilities, epss_scores, kev_ids, lang=lang)
     return items, epss_complete, kev_source
 
 

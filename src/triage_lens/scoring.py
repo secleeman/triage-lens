@@ -2,10 +2,14 @@
 
 閾値はこのモジュールの定数に集約する。将来（Phase 2 以降）に設定可能にできるよう、
 判定関数は閾値を引数でも受け取れるようにしてある。
+
+理由の説明文は言語ごとに変わるため、文言は `i18n` に置き、ここでは
+`lang` を受け取って組み立てるだけにする。
 """
 
 from collections.abc import Iterable, Mapping
 
+from .i18n import DEFAULT_LANG, Catalog, catalog
 from .models import EnrichedVulnerability, Priority, Vulnerability
 
 #: EPSS（今後30日間に悪用される確率）が「高い」と見なす下限
@@ -15,35 +19,36 @@ EPSS_THRESHOLD = 0.1
 CVSS_THRESHOLD = 7.0
 
 
-def format_epss(epss: float | None) -> str:
+def format_epss(epss: float | None, lang: str = DEFAULT_LANG) -> str:
     """EPSS を表示用の文字列にする。"""
-    return "不明" if epss is None else f"{epss:.3f}"
+    return catalog(lang)("unknown") if epss is None else f"{epss:.3f}"
 
 
-def format_cvss(cvss: float | None) -> str:
+def format_cvss(cvss: float | None, lang: str = DEFAULT_LANG) -> str:
     """CVSS を表示用の文字列にする。"""
-    return "不明" if cvss is None else f"{cvss:.1f}"
+    return catalog(lang)("unknown") if cvss is None else f"{cvss:.1f}"
 
 
-def format_kev(in_kev: bool | None) -> str:
+def format_kev(in_kev: bool | None, lang: str = DEFAULT_LANG) -> str:
     """KEV 掲載有無を表示用の文字列にする。"""
+    text = catalog(lang)
     if in_kev is None:
-        return "不明"
-    return "あり" if in_kev else "なし"
+        return text("unknown")
+    return text("kev_yes") if in_kev else text("kev_no")
 
 
-def _epss_clause(epss: float | None, high: bool) -> str:
+def _epss_clause(text: Catalog, epss: float | None, high: bool) -> str:
     """EPSS の状態を表す語。取得できていない値を「低い」と書かないためのもの。"""
     if epss is None:
-        return "悪用確率は不明"
-    return "悪用確率は高い" if high else "悪用確率は低い"
+        return text("clause_epss_unknown")
+    return text("clause_epss_high") if high else text("clause_epss_low")
 
 
-def _cvss_clause(cvss: float | None, high: bool) -> str:
+def _cvss_clause(text: Catalog, cvss: float | None, high: bool) -> str:
     """CVSS の状態を表す語。取得できていない値を「中以下」と書かないためのもの。"""
     if cvss is None:
-        return "深刻度は不明"
-    return "深刻度は高い" if high else "深刻度は中以下"
+        return text("clause_cvss_unknown")
+    return text("clause_cvss_high") if high else text("clause_cvss_low")
 
 
 def classify(
@@ -53,46 +58,51 @@ def classify(
     *,
     epss_threshold: float = EPSS_THRESHOLD,
     cvss_threshold: float = CVSS_THRESHOLD,
+    lang: str = DEFAULT_LANG,
 ) -> tuple[Priority, str]:
     """1件の脆弱性を P0〜P3 に分類し、その理由の説明文を返す。"""
+    text = catalog(lang)
     cvss = vuln.cvss
 
     if in_kev:
-        return Priority.P0, "KEV掲載＝実際に悪用されている"
+        return Priority.P0, text("reason_kev")
 
     high_epss = epss is not None and epss >= epss_threshold
     high_cvss = cvss is not None and cvss >= cvss_threshold
 
-    epss_text = format_epss(epss)
-    cvss_text = format_cvss(cvss)
-    epss_clause = _epss_clause(epss, high_epss)
-    cvss_clause = _cvss_clause(cvss, high_cvss)
+    epss_text = format_epss(epss, lang)
+    cvss_text = format_cvss(cvss, lang)
+    epss_clause = _epss_clause(text, epss, high_epss)
+    cvss_clause = _cvss_clause(text, cvss, high_cvss)
 
     if high_epss and high_cvss:
         priority = Priority.P1
-        reason = f"悪用確率が高く（EPSS {epss_text}）、深刻度も高い（CVSS {cvss_text}）"
+        reason = text("reason_p1", epss=epss_text, cvss=cvss_text)
     elif high_cvss:
         priority = Priority.P2
-        reason = f"深刻度は高い（CVSS {cvss_text}）が、{epss_clause}（EPSS {epss_text}）"
+        reason = text("reason_p2_cvss", cvss=cvss_text, epss=epss_text, epss_clause=epss_clause)
     elif high_epss:
         priority = Priority.P2
-        reason = f"悪用確率は高い（EPSS {epss_text}）が、{cvss_clause}（CVSS {cvss_text}）"
+        reason = text("reason_p2_epss", epss=epss_text, cvss=cvss_text, cvss_clause=cvss_clause)
     else:
         priority = Priority.P3
-        reason = (
-            f"{epss_clause}・{cvss_clause}で、高リスクの条件に当てはまらない"
-            f"（EPSS {epss_text} / CVSS {cvss_text}）"
+        reason = text(
+            "reason_p3",
+            epss_clause=epss_clause,
+            cvss_clause=cvss_clause,
+            epss=epss_text,
+            cvss=cvss_text,
         )
 
     notes = []
     if in_kev is None:
-        notes.append("KEV情報が取得できず未判定")
+        notes.append(text("note_kev_missing"))
     if epss is None:
-        notes.append("EPSSが取得できず判定に使えていない")
+        notes.append(text("note_epss_missing"))
     if cvss is None:
-        notes.append("CVSSが不明で判定に使えていない")
+        notes.append(text("note_cvss_missing"))
     if notes:
-        reason = f"{reason}［{' / '.join(notes)}］"
+        reason = text("notes_wrapper", reason=reason, notes=text("notes_separator").join(notes))
 
     return priority, reason
 
@@ -118,6 +128,7 @@ def prioritize(
     *,
     epss_threshold: float = EPSS_THRESHOLD,
     cvss_threshold: float = CVSS_THRESHOLD,
+    lang: str = DEFAULT_LANG,
 ) -> list[EnrichedVulnerability]:
     """脆弱性一覧に公開データを突き合わせ、優先度順に並べて返す。
 
@@ -140,6 +151,7 @@ def prioritize(
                 None if kev_ids is None else vuln.cve_id in kev_ids,
                 epss_threshold=epss_threshold,
                 cvss_threshold=cvss_threshold,
+                lang=lang,
             )
         ]
     ]

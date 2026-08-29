@@ -11,7 +11,7 @@
 - オーナーはコードを読まない。品質は自動テストと動作確認で担保する。
 
 ## 絶対ルール
-1. **mainに直接pushしない**。必ずfeature branch → PR。マージはオーナーが行う。
+1. **mainに直接pushしない**。必ずfeature branch → PR。マージはオーナーの明示承認を得て行う（実行はClaude Code可）。
 2. **Phase単位で進める**。現在のPhaseの要件（docs/requirements-p1.md等）の範囲外を実装しない。
 3. **テストなしのコードを書かない**。pytest必須。CIが緑になるまでPRを完成扱いしない。
 4. **外部APIはNVD/EPSS(FIRST.org)/CISA KEVの公開エンドポイントのみ**。認証キー不要の範囲で使う。レート制限を尊重し、リトライとキャッシュを実装する。

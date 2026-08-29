@@ -1,0 +1,24 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:3f1a0000-0000-4000-8000-000000000002",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-29T03:00:00Z",
+    "component": {
+      "bom-ref": "root-component",
+      "type": "application",
+      "name": "demo-service",
+      "version": "0.2.0"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:pypi/httpx@0.27.0",
+      "type": "library",
+      "name": "httpx",
+      "version": "0.27.0",
+      "purl": "pkg:pypi/httpx@0.27.0"
+    }
+  ]
+}

@@ -3,8 +3,15 @@
 from collections.abc import Sequence
 from datetime import datetime
 
+from .i18n import DEFAULT_LANG, Catalog, catalog
 from .kev import SOURCE_STALE_CACHE, SOURCE_UNAVAILABLE
-from .models import EnrichedVulnerability, Priority
+from .models import (
+    UNKNOWN_NAME,
+    UNKNOWN_TARGET,
+    UNKNOWN_VALUE,
+    EnrichedVulnerability,
+    Priority,
+)
 from .scoring import (
     CVSS_THRESHOLD,
     EPSS_THRESHOLD,
@@ -20,10 +27,19 @@ DEFAULT_TOP_N = 5
 #: 全件表示するランク
 _FULL_LIST_PRIORITIES = (Priority.P0, Priority.P1)
 
-_TABLE_HEADER = (
-    "| CVE | パッケージ | 検出箇所 | 現在 → 修正 | CVSS | EPSS | KEV | 優先度の理由 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |",
-)
+#: 一覧表の区切り行（列数は `table_header` の文言と揃える）
+_TABLE_DIVIDER = "| " + " | ".join(["---"] * 8) + " |"
+
+#: パーサが入れた「読み取れなかった」表記と、その文言キーの対応。
+#: 形式の解釈は言語に依存しないため、表示するときにレポート言語へ差し替える。
+_PLACEHOLDER_KEYS = {
+    UNKNOWN_NAME: "placeholder_unknown_name",
+    UNKNOWN_VALUE: "placeholder_unknown_value",
+    UNKNOWN_TARGET: "placeholder_unknown_target",
+}
+
+#: 日時の表記。曖昧さを避けるため両言語で共通にする。
+_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M"
 
 
 def render_report(
@@ -34,67 +50,67 @@ def render_report(
     top_n: int = DEFAULT_TOP_N,
     epss_complete: bool = True,
     kev_source: str = "",
+    lang: str = DEFAULT_LANG,
 ) -> str:
-    """優先度付きの脆弱性一覧から日本語の Markdown レポートを組み立てる。"""
+    """優先度付きの脆弱性一覧から Markdown レポートを組み立てる。"""
+    text = catalog(lang)
     counts = count_by_priority(items)
-    lines: list[str] = ["# 脆弱性トリアージレポート", ""]
+    lines: list[str] = [f"# {text('report_title')}", ""]
     lines += [
-        f"- 対象: {_escape(artifact_name)}",
-        f"- 生成日時: {generated_at:%Y-%m-%d %H:%M}",
-        f"- 判定基準: CISA KEV 掲載 / EPSS {EPSS_THRESHOLD} 以上 / CVSS {CVSS_THRESHOLD} 以上",
+        text("meta_target", artifact=_field(text, artifact_name)),
+        text("meta_generated_at", timestamp=generated_at.strftime(_TIMESTAMP_FORMAT)),
+        text("meta_criteria", epss=EPSS_THRESHOLD, cvss=CVSS_THRESHOLD),
         "",
     ]
 
-    warnings = _warnings(epss_complete=epss_complete, kev_source=kev_source)
+    warnings = _warnings(text, epss_complete=epss_complete, kev_source=kev_source)
     if warnings:
         lines += [f"> ⚠️ {warning}" for warning in warnings]
         lines.append("")
 
-    lines += _summary_section(items, counts)
+    lines += _summary_section(text, items, counts)
 
     if not items:
-        lines += ["検出された脆弱性はありません。", ""]
+        lines += [text("no_findings"), ""]
     else:
         for priority in Priority:
             limit = None if priority in _FULL_LIST_PRIORITIES else top_n
-            lines += _priority_section(items, priority, counts[priority], limit)
+            lines += _priority_section(text, items, priority, counts[priority], limit)
 
-    lines += _footer()
+    lines += _footer(text)
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _warnings(*, epss_complete: bool, kev_source: str) -> list[str]:
+def _warnings(text: Catalog, *, epss_complete: bool, kev_source: str) -> list[str]:
     warnings: list[str] = []
     if kev_source == SOURCE_UNAVAILABLE:
-        warnings.append(
-            "CISA KEV カタログを取得できませんでした。"
-            "KEV 掲載有無は「不明」として扱い、P0 の判定はできていません。"
-        )
+        warnings.append(text("warn_kev_unavailable"))
     elif kev_source == SOURCE_STALE_CACHE:
-        warnings.append(
-            "CISA KEV カタログの再取得に失敗したため、24時間以上前のキャッシュを使用しています。"
-        )
+        warnings.append(text("warn_kev_stale_cache"))
     if not epss_complete:
-        warnings.append(
-            "EPSS スコアの一部または全部を取得できませんでした。"
-            "取得できなかったものは CVSS のみで判定しています。"
-        )
+        warnings.append(text("warn_epss_incomplete"))
     return warnings
 
 
 def _summary_section(
-    items: Sequence[EnrichedVulnerability], counts: dict[Priority, int]
+    text: Catalog, items: Sequence[EnrichedVulnerability], counts: dict[Priority, int]
 ) -> list[str]:
-    lines = ["## サマリ", "", f"検出総数: {len(items)}件", ""]
-    lines.append("| 優先度 | 件数 | 目安 |")
-    lines.append("| --- | --- | --- |")
+    lines = [
+        f"## {text('summary_heading')}",
+        "",
+        text("summary_total", count=len(items)),
+        "",
+        text("summary_table_header"),
+        "| --- | --- | --- |",
+    ]
     for priority in Priority:
-        lines.append(f"| {priority.label} | {counts[priority]} | {priority.action} |")
+        lines.append(f"| {priority.label} | {counts[priority]} | {_action(text, priority)} |")
     lines.append("")
     return lines
 
 
 def _priority_section(
+    text: Catalog,
     items: Sequence[EnrichedVulnerability],
     priority: Priority,
     count: int,
@@ -105,57 +121,87 @@ def _priority_section(
         shown = shown[: max(0, limit)]
 
     if limit is None or count <= len(shown):
-        scope = f"{count}件"
+        scope = text("scope_all", count=count)
     elif not shown:
-        scope = f"{count}件（表示件数の指定により省略）"
+        scope = text("scope_omitted", count=count)
     else:
-        scope = f"{count}件中 上位{len(shown)}件を表示"
+        scope = text("scope_top", count=count, shown=len(shown))
 
-    lines = [f"## {priority.label} — {priority.action}（{scope}）", ""]
+    heading = text(
+        "section_heading", label=priority.label, action=_action(text, priority), scope=scope
+    )
+    lines = [f"## {heading}", ""]
     if not shown:
-        lines += ["該当なし。" if count == 0 else "（表示なし）", ""]
+        lines += [text("section_none") if count == 0 else text("section_hidden"), ""]
         return lines
 
-    lines += list(_TABLE_HEADER)
-    lines += [_row(item) for item in shown]
+    lines += [text("table_header"), _TABLE_DIVIDER]
+    lines += [_row(text, item) for item in shown]
     lines.append("")
     return lines
 
 
-def _row(item: EnrichedVulnerability) -> str:
+def _action(text: Catalog, priority: Priority) -> str:
+    return text(f"action_{priority.name}")
+
+
+def _row(text: Catalog, item: EnrichedVulnerability) -> str:
     vuln = item.vuln
-    fixed = _escape(vuln.fixed_version) if vuln.fixed_version else "修正版なし"
     cells = [
         _escape(vuln.cve_id),
-        _escape(vuln.pkg_name),
-        _escape(vuln.target),
-        f"{_escape(vuln.installed_version)} → {fixed}",
-        format_cvss(vuln.cvss),
-        format_epss(item.epss),
-        format_kev(item.in_kev),
+        _field(text, vuln.pkg_name),
+        _field(text, vuln.target),
+        text(
+            "version_transition",
+            installed=_field(text, vuln.installed_version),
+            fixed=_fixed_version(text, item),
+        ),
+        format_cvss(vuln.cvss, text.lang),
+        format_epss(item.epss, text.lang),
+        format_kev(item.in_kev, text.lang),
         _escape(item.reason),
     ]
     return "| " + " | ".join(cells) + " |"
 
 
-def _footer() -> list[str]:
-    return [
-        "## 優先度の付け方",
+def _fixed_version(text: Catalog, item: EnrichedVulnerability) -> str:
+    """修正版の表記。「存在しない」と「分からない」を混同しない。"""
+    vuln = item.vuln
+    if vuln.fixed_version:
+        return _escape(vuln.fixed_version)
+    return text("no_fix_available") if vuln.fixed_version_known else text("unknown")
+
+
+def _footer(text: Catalog) -> list[str]:
+    conditions = {
+        Priority.P0: text("condition_p0"),
+        Priority.P1: text("condition_p1", epss=EPSS_THRESHOLD, cvss=CVSS_THRESHOLD),
+        Priority.P2: text("condition_p2", epss=EPSS_THRESHOLD, cvss=CVSS_THRESHOLD),
+        Priority.P3: text("condition_p3"),
+    }
+    lines = [
+        f"## {text('footer_heading')}",
         "",
-        "| 優先度 | 条件 |",
+        text("footer_table_header"),
         "| --- | --- |",
-        "| P0 (Act now) | CISA KEV に掲載＝実際に悪用が確認されている |",
-        f"| P1 (High) | EPSS {EPSS_THRESHOLD} 以上 かつ CVSS {CVSS_THRESHOLD} 以上 |",
-        f"| P2 (Medium) | EPSS {EPSS_THRESHOLD} 以上 か CVSS {CVSS_THRESHOLD} 以上 の一方のみ |",
-        "| P3 (Low) | 上記のいずれにも当てはまらない |",
+    ]
+    lines += [f"| {priority.label} | {conditions[priority]} |" for priority in Priority]
+    lines += [
         "",
-        "同一ランク内は EPSS の高い順、次に CVSS の高い順に並べています。",
+        text("footer_sort_note"),
         "",
-        "データ出典: CISA KEV カタログ / FIRST.org EPSS / CVSS はスキャナ出力の値。",
+        text("footer_sources"),
         "",
     ]
+    return lines
 
 
-def _escape(text: str) -> str:
+def _field(text: Catalog, value: str) -> str:
+    """表に出す値。読み取れなかったことを表す表記はレポート言語に合わせる。"""
+    key = _PLACEHOLDER_KEYS.get(value)
+    return text(key) if key else _escape(value)
+
+
+def _escape(value: str) -> str:
     """Markdown の表を壊さないように整形する。"""
-    return text.replace("|", r"\|").replace("\n", " ").strip()
+    return value.replace("|", r"\|").replace("\n", " ").strip()

@@ -1,0 +1,7 @@
+{
+  "name": "demo-service",
+  "version": "0.2.0",
+  "dependencies": {
+    "libdemo": "1.0.0"
+  }
+}

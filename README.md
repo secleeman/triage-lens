@@ -1,7 +1,9 @@
 # triage-lens
 
-スキャナ（Trivy）が出力した脆弱性の一覧を、公開データで優先順位付けして、
-**「どれから直せばいいか」が分かる日本語のトリアージレポート（Markdown）** にする CLI ツールです。
+スキャナが出力した脆弱性の一覧を、公開データで優先順位付けして、
+**「どれから直せばいいか」が分かるトリアージレポート（Markdown）** にする CLI ツールです。
+
+*English: [README.en.md](README.en.md)*
 
 判定に使う情報:
 
@@ -16,7 +18,22 @@
 ## 必要なもの
 
 - Python 3.11 以上
-- スキャン対象の Trivy JSON 出力（`trivy --format json`）
+- スキャン結果の JSON ファイル（対応形式は次のとおり）
+
+### 対応している入力形式
+
+| 形式 | 作り方 | 備考 |
+| --- | --- | --- |
+| Trivy の JSON | `trivy image --format json -o result.json <対象>` | Phase 1 から対応 |
+| CycloneDX（JSON） | `trivy image --format cyclonedx -o sbom.cdx.json <対象>` | 仕様 1.4 以降。他のツールが出力した SBOM も読めます |
+
+**形式は中身を見て自動で判別します。** オプションでの指定は不要です。
+
+CycloneDX は SBOM（部品表）の形式なので、脆弱性の一覧（`vulnerabilities`）を
+含まないファイルもあります。その場合は「検出0件」のレポートになります
+（triage-lens 自身は脆弱性を検出しません）。
+
+SPDX 形式と CycloneDX の XML 表現には対応していません。
 
 ## インストール
 
@@ -35,10 +52,18 @@ Windows（PowerShell）の場合は最後の行を次に置き換えてくださ
 
 ## 使い方
 
-### 1. Trivy でスキャンして JSON を出す
+### 1. スキャンして JSON を出す
+
+Trivy の JSON 形式:
 
 ```bash
 trivy image --format json -o trivy-result.json sample-app:1.4.0
+```
+
+CycloneDX 形式（SBOM）:
+
+```bash
+trivy image --format cyclonedx -o sbom.cdx.json sample-app:1.4.0
 ```
 
 ### 2. トリアージレポートを作る
@@ -47,12 +72,27 @@ trivy image --format json -o trivy-result.json sample-app:1.4.0
 triage-lens report trivy-result.json -o triage-report.md
 ```
 
+CycloneDX でも同じコマンドです（形式は自動判別されます）。
+
+```bash
+triage-lens report sbom.cdx.json -o triage-report.md
+```
+
+英語のレポートが欲しい場合は `--lang en` を付けます。
+
+```bash
+triage-lens report trivy-result.json --lang en -o triage-report-en.md
+```
+
 `-o` を省略すると標準出力に表示します。
 
 | オプション | 説明 | 既定値 |
 | --- | --- | --- |
 | `-o`, `--output` | 出力先の Markdown ファイル | 標準出力 |
 | `--top N` | P2 / P3 で表示する件数（P0 / P1 は常に全件） | 5 |
+| `--lang {ja,en}` | レポートの言語 | `ja`（日本語） |
+
+`--lang` はレポート本文の言語です。エラーメッセージと `--help` の説明は日本語のままです。
 
 ## 出力例
 
@@ -60,7 +100,7 @@ triage-lens report trivy-result.json -o triage-report.md
 # 脆弱性トリアージレポート
 
 - 対象: sample-app:1.4.0
-- 生成日時: 2026-08-28 22:06
+- 生成日時: 2026-08-29 03:00
 - 判定基準: CISA KEV 掲載 / EPSS 0.1 以上 / CVSS 7.0 以上
 
 ## サマリ
@@ -80,7 +120,22 @@ triage-lens report trivy-result.json -o triage-report.md
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CVE-2021-44228 | log4j-core | app/requirements.txt | 2.14.1 → 2.15.0 | 10.0 | 1.000 | あり | KEV掲載＝実際に悪用されている |
 | CVE-2014-0160 | openssl | app/requirements.txt | 1.0.1e-2 → 1.0.1g-1 | 7.5 | 1.000 | あり | KEV掲載＝実際に悪用されている |
-| CVE-2014-0160 | openssl | sample-app:1.4.0 (debian 12.5) | 1.0.1e-2 → 1.0.1g-1 | 7.5 | 1.000 | あり | KEV掲載＝実際に悪用されている |
+```
+
+`--lang en` を付けると同じ内容が英語になります。
+
+```markdown
+# Vulnerability Triage Report
+
+- Target: sample-app:1.4.0
+- Generated: 2026-08-29 03:00
+- Criteria: listed in CISA KEV / EPSS >= 0.1 / CVSS >= 7.0
+
+## P0 (Act now) - Patch immediately (4 total)
+
+| CVE | Package | Location | Installed -> Fixed | CVSS | EPSS | KEV | Why |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CVE-2021-44228 | log4j-core | app/requirements.txt | 2.14.1 -> 2.15.0 | 10.0 | 1.000 | Yes | Listed in CISA KEV - exploitation observed in the wild |
 ```
 
 （実際のレポートには P1〜P3 の一覧と、優先度の付け方の説明が続きます）
@@ -96,15 +151,61 @@ triage-lens report trivy-result.json -o triage-report.md
 
 同一ランク内は **EPSS の高い順 → CVSS の高い順** に並びます。値が不明なものはその中で末尾になります。
 
-同じ CVE でも、検出箇所（Trivy の Target）やパッケージ、バージョンが違えば別々の行として残します。
-上の例では `openssl` の CVE-2014-0160 が OS パッケージ側とアプリ依存側の両方で見つかっており、
-どちらも直す必要があるため2行に出ています。完全に同一の検出だけを重複として除きます。
+同じ CVE でも、検出箇所やパッケージ、バージョンが違えば別々の行として残します。
+OS パッケージ側とアプリ依存側の両方で同じ CVE が見つかった場合、どちらも直す必要があるためです。
+完全に同一の検出だけを重複として除きます。
+
+完全に同一の検出が複数回出てきた場合（SBOM を結合したときなど）、値が食い違うときは
+次のようにまとめます。
+
+| 項目 | まとめ方 |
+| --- | --- |
+| CVSS | **高い方を残す**（低い方を採ると実態より安全に見えるため） |
+| 修正バージョン | 「不明」より、版数が分かっている方を優先。両方に版数があって食い違う場合は**新しい方**。比較できない表記なら安全側で「不明」 |
+
+修正バージョンの比較は、`1.2.10` のように数字とドットだけの表記に限ります。
+`1:1.2.11.dfsg-2+deb11u2` や `>=1.0.1g-1` のような表記は独自に解釈すると
+誤った新旧を作りかねないため、比較せずに「不明」と表示します。
 
 外部データ（EPSS / KEV）が取得できなかった項目は、理由欄に「悪用確率は不明」のように
 **「不明」であることを明記** します（取得できていない値を「低い」とは書きません）。
 
 閾値（0.1 / 7.0）は [`src/triage_lens/scoring.py`](src/triage_lens/scoring.py) の
 `EPSS_THRESHOLD` / `CVSS_THRESHOLD` に集約してあります。
+
+## 「修正版なし」と「不明」の違い
+
+修正版の欄には次の3通りが出ます。
+
+| 表示 | 意味 |
+| --- | --- |
+| `1.0.0 → 1.0.1` | 修正版がある |
+| `1.0.0 → 修正版なし` | 修正版がまだ出ていない |
+| `1.0.0 → 不明` | 修正版があるかどうか、入力ファイルからは分からない |
+
+Trivy の JSON では「書かれていない＝修正版なし」と読めるため「修正版なし」と表示します。
+CycloneDX には修正版の不在を明示する項目が無いため、読み取れなかった場合は
+**「修正版なし」と断定せず「不明」** と表示します。
+
+## CycloneDX を読むときの対応関係
+
+| レポートの項目 | CycloneDX の取得元 |
+| --- | --- |
+| 対象 | `metadata.component` の `name`（＋ `version`）→ 無ければ `purl` |
+| CVE | `vulnerabilities[].id` |
+| パッケージ | `affects[].ref` から引いた component の `name` |
+| 現バージョン | component の `version` → 無ければ `affects[].versions[]` の `affected` |
+| 修正 | `affects[].versions[]` の `unaffected` |
+| 検出箇所 | component の `purl` → 無ければ `bom-ref` → 無ければ対象名 |
+| CVSS | `ratings[].score` |
+
+- 1つの脆弱性が複数の部品に影響する場合、**部品ごとに1行** に分かれます
+- CVSS は現行世代（CVSSv3 / CVSSv31 / CVSSv4）を優先し、無ければ CVSSv2 を使います。
+  同じ世代に複数あれば NVD のスコアを優先します
+- `method` が書かれていないスコアや、CVSS 以外の尺度（`other` / `OWASP` / `SSVC`）は
+  **CVSS として扱わず「不明」** にします。尺度の違う数値を並べると誤解を招くためです
+- SBOM に載っていない部品を参照している脆弱性も、行としては残します
+  （パッケージ名は「(不明)」になります）
 
 ## 外部データの扱い
 
@@ -120,7 +221,7 @@ triage-lens report trivy-result.json -o triage-report.md
 | コード | 意味 |
 | --- | --- |
 | 0 | 正常終了（外部データを取得できず部分的なレポートになった場合も 0） |
-| 2 | 入力エラー（ファイルが無い / JSON が壊れている / Trivy 以外の形式 / オプションの指定ミス） |
+| 2 | 入力エラー（ファイルが無い / JSON が壊れている / 対応形式でない / オプションの指定ミス） |
 
 ## 開発
 
@@ -134,18 +235,21 @@ triage-lens report trivy-result.json -o triage-report.md
 GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 で
 テストと lint が実行されます。
 
-## この版（Phase 1）でできること・できないこと
+## この版（Phase 2）でできること・できないこと
 
 できること:
 
 - Trivy の JSON 出力の読み込み
+- CycloneDX（JSON）の SBOM の読み込み（形式は自動判別）
 - EPSS / CISA KEV による優先順位付け
-- 日本語 Markdown レポートの生成
+- 日本語・英語の Markdown レポートの生成
 
 まだできないこと（今後のフェーズ）:
 
-- CycloneDX / SPDX 形式の入力
-- 英語レポート
+- SPDX 形式の入力
+- CycloneDX の XML 表現
+- エラーメッセージ・`--help` の英語化
+- 日英以外の言語
 - 設定ファイル / Web UI
 
 ## ライセンス
