@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triage-lens"
-version = "0.4.1"
+version = "0.5.0"
 description = "Prioritise scanner vulnerability output with public data (EPSS / CISA KEV / CVSS) and generate a triage report / スキャナの脆弱性リストを公開データで優先順位付けし、トリアージレポートを生成する CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,7 +35,7 @@ dependencies = ["httpx>=0.27"]
 
 [project.optional-dependencies]
 # ruff は書式ルールがマイナーバージョンで変わることがあるため範囲を固定する
-dev = ["pytest>=8", "ruff>=0.16,<0.17"]
+dev = ["pytest>=8", "ruff>=0.16,<0.17", "pyyaml>=6"]
 
 [project.urls]
 Homepage = "https://github.com/secleeman/triage-lens"

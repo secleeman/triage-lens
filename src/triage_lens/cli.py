@@ -21,17 +21,26 @@ from .epss import fetch_epss_scores
 from .errors import InputError
 from .http_client import build_client
 from .i18n import DEFAULT_LANG, SUPPORTED_LANGS
-from .kev import load_kev_ids
+from .kev import SOURCE_STALE_CACHE, SOURCE_UNAVAILABLE, load_kev_ids
 from .loader import load_scan
-from .models import AiAnnotation, EnrichedVulnerability, ScanInput
+from .models import AiAnnotation, EnrichedVulnerability, Priority, ScanInput
 from .report import DEFAULT_TOP_N, render_report
 from .scoring import prioritize
 
 #: 正常終了
 EXIT_OK = 0
 
+#: `--fail-on` で指定したランク以上の検出があった
+EXIT_FAIL_ON = 1
+
 #: 入力ファイルが読めない・想定形式でない
 EXIT_INPUT_ERROR = 2
+
+#: `--fail-on-fetch-error` 指定時に、外部データを取得できなかった
+EXIT_FETCH_ERROR = 3
+
+#: `--fail-on` に指定できるランク
+FAIL_ON_CHOICES = [priority.name.lower() for priority in Priority]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -69,6 +78,26 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"レポートの言語（既定: {DEFAULT_LANG}）",
     )
     report_parser.add_argument(
+        "--fail-on",
+        type=str.lower,
+        choices=FAIL_ON_CHOICES,
+        default=None,
+        metavar="RANK",
+        help=(
+            f"指定したランク以上の検出があれば終了コード {EXIT_FAIL_ON} で終わる"
+            f"（{' / '.join(FAIL_ON_CHOICES)}。p3 は実質すべての検出が対象。"
+            "既定では指定なしで、常に 0 で終わる）"
+        ),
+    )
+    report_parser.add_argument(
+        "--fail-on-fetch-error",
+        action="store_true",
+        help=(
+            f"--fail-on と併用し、EPSS / CISA KEV を取得できなかった場合に"
+            f"終了コード {EXIT_FETCH_ERROR} で終わる（既定では警告を出すだけ）"
+        ),
+    )
+    report_parser.add_argument(
         "--ai",
         action="store_true",
         help=f"各CVEにAIが生成した対応方針コメントを付ける（環境変数 {API_KEY_ENV} が必要）",
@@ -94,11 +123,22 @@ def main(argv: list[str] | None = None, *, client: httpx.Client | None = None) -
     """CLI のエントリポイント。終了コードを返す。"""
     parser = build_parser()
     args = parser.parse_args(argv)
+    _validate_options(parser, args)
     try:
         return args.handler(args, client=client)
     except InputError as exc:
         _write_error(f"エラー: {exc}")
         return EXIT_INPUT_ERROR
+
+
+def _validate_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """オプション同士の組み合わせを検査する。
+
+    何も起きないオプションを黙って受け取ると、利用者は「指定したのに
+    落ちない」理由に辿り着けない。指定ミスとしてその場で落とす。
+    """
+    if args.fail_on_fetch_error and args.fail_on is None:
+        parser.error("--fail-on-fetch-error は --fail-on と併せて指定してください")
 
 
 def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) -> int:
@@ -120,7 +160,64 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         ai=ai_annotation,
     )
     _write_output(report, args.output)
+
+    # 判定はレポートを書き出し切ってから行う。CI が落ちたときに
+    # 原因を見るためのレポートが無い、という状態を作らないため。
+    return decide_exit_code(args, items, epss_complete=epss_complete, kev_source=kev_source)
+
+
+def decide_exit_code(
+    args: argparse.Namespace,
+    items: list[EnrichedVulnerability],
+    *,
+    epss_complete: bool,
+    kev_source: str,
+) -> int:
+    """レポート出力後の終了コードを決める。
+
+    `--fail-on` を指定していなければ、従来どおり常に 0 を返す。
+    """
+    if args.fail_on is None:
+        return EXIT_OK
+
+    warnings = fetch_warnings(epss_complete=epss_complete, kev_source=kev_source)
+    for warning in warnings:
+        _write_error(warning)
+
+    if warnings and args.fail_on_fetch_error:
+        # 取得失敗のほうを優先する。欠けたデータで出した判定結果を
+        # 「該当あり」として返すと、取得失敗のほうを見落とすため。
+        return EXIT_FETCH_ERROR
+
+    threshold = Priority[args.fail_on.upper()]
+    if any(item.priority.value <= threshold.value for item in items):
+        return EXIT_FAIL_ON
     return EXIT_OK
+
+
+def fetch_warnings(*, epss_complete: bool, kev_source: str) -> list[str]:
+    """取得できなかった外部データについての警告文を並べる。
+
+    レポート本文にも同じことが書かれるが、CI では緑になったログを誰も
+    読まない。判定が実際より甘くなっている可能性は標準エラーにも出す。
+    """
+    warnings = []
+    if kev_source == SOURCE_UNAVAILABLE:
+        warnings.append(
+            "警告: CISA KEV を取得できませんでした。KEV 掲載を根拠とする P0 判定が出ないため、"
+            "--fail-on の判定が実際より甘くなっている可能性があります。"
+        )
+    elif kev_source == SOURCE_STALE_CACHE:
+        warnings.append(
+            "警告: CISA KEV を再取得できず、期限切れのキャッシュを使いました。"
+            "最近 KEV に追加された脆弱性を見落としている可能性があります。"
+        )
+    if not epss_complete:
+        warnings.append(
+            "警告: EPSS を一部取得できませんでした。EPSS を根拠とする判定が出ないため、"
+            "--fail-on の判定が実際より甘くなっている可能性があります。"
+        )
+    return warnings
 
 
 def add_ai_comments(

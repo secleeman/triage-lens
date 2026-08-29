@@ -127,11 +127,118 @@ triage-lens report trivy-result.json --lang en -o triage-report-en.md
 | `-o`, `--output` | 出力先の Markdown ファイル | 標準出力 |
 | `--top N` | P2 / P3 で表示する件数（P0 / P1 は常に全件） | 5 |
 | `--lang {ja,en}` | レポートの言語 | `ja`（日本語） |
+| `--fail-on {p0,p1,p2,p3}` | 指定したランク以上の検出があれば終了コード 1 で終わる | 指定なし（常に 0） |
+| `--fail-on-fetch-error` | `--fail-on` と併用し、外部データを取得できなければ終了コード 3 で終わる | 付けない |
 | `--ai` | AI による対応方針コメントを付ける | 付けない |
 | `--ai-limit N` | AI コメントを生成する上限件数 | 50 |
 | `--ai-model NAME` | AI コメントの生成に使うモデル | `claude-haiku-4-5` |
 
 `--lang` はレポート本文の言語です。エラーメッセージと `--help` の説明は日本語のままです。
+
+### 3. 深刻な検出があったら止める（`--fail-on`）
+
+```bash
+triage-lens report trivy-result.json -o triage-report.md --fail-on p1
+```
+
+指定したランク**以上に緊急な**検出が1件でもあれば、終了コード 1 で終わります。
+`p1` なら P0 と P1 が対象です。`p3` は最下位なので、実質「検出が1件でもあれば落ちる」
+という意味になります。
+
+- **レポートは落ちるときも必ず生成されます。** 判定はレポートを書き出し切ったあとに
+  行います。落ちたのに原因を見るレポートが無い、という状態は作りません
+- **`--top` は判定に影響しません。** 表示件数を絞るだけで、判定は常に全件が対象です
+- `--ai` が動かなかった場合も、判定の結果は変わりません
+
+#### 外部データを取得できなかったとき
+
+EPSS や CISA KEV を取得できないと、**判定は実際より甘くなります**。
+KEV が引けなければ KEV 掲載を根拠とする P0 判定が出ず、本来 P0 の検出が
+P2 / P3 に落ちるためです。
+
+このとき triage-lens は標準エラーに警告を出しますが、**終了コードは変えません**
+（外部サービスの一時的な不調で CI が落ち続けるのを避けるためです）。
+
+厳しくしたい場合は `--fail-on-fetch-error` を付けてください。
+取得に失敗していた場合、終了コード 3 で終わります。
+
+```bash
+triage-lens report trivy-result.json -o triage-report.md --fail-on p1 --fail-on-fetch-error
+```
+
+「データが取れなかった」と「該当する検出があった」は別の話なので、終了コードを分けています。
+両方が同時に起きた場合は 3 を返します。
+
+## GitHub Actions で使う
+
+CI に組み込む場合は composite action が使えます。
+**スキャンそのものは行いません。** 別のステップで出力した JSON を渡してください。
+
+```yaml
+name: Vulnerability triage
+
+on: [pull_request]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: スキャンする
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          format: json
+          output: trivy.json
+
+      - name: トリアージレポートを作る
+        uses: secleeman/triage-lens@v0.5.0
+        with:
+          scan-file: trivy.json
+          fail-on: p1
+
+      - name: レポートを残す
+        if: always()          # fail-on で落ちてもレポートは残す
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-report
+          path: triage-report.md
+```
+
+### 入力
+
+| 名前 | 必須 | 既定値 | 説明 |
+| --- | --- | --- | --- |
+| `scan-file` | ✅ | — | スキャナ出力の JSON のパス（形式は自動判別） |
+| `lang` | | `ja` | レポートの言語（`ja` / `en`） |
+| `fail-on` | | 空（落とさない） | `p0` / `p1` / `p2` / `p3` |
+| `fail-on-fetch-error` | | `false` | `true` にすると、取得失敗時に終了コード 3 で落とす |
+| `ai` | | `false` | `true` にすると AI コメントを付ける |
+| `output` | | `triage-report.md` | 出力先の Markdown ファイル |
+
+出力は `report-path`（生成したレポートのパス）だけです。
+
+### 使うときに気をつけること
+
+- **`uses:` は `@vX.Y.Z` の固定タグで書いてください。** `@v1` のような動くタグは
+  出していません。セキュリティツールの中身が黙って変わらないようにするためです
+- **動作を確認しているのは `ubuntu-latest` だけです。**
+- **`if: always()` を付けてレポートを残してください。** これが無いと、`fail-on` で
+  落ちたときに肝心のレポートが取れません
+- **`ai` は既定の `false` のままを勧めます。** PR ごとに動かすと課金が積み上がります。
+  使う場合は手動起動や main への push に限ってください。APIキーは `with` ではなく
+  `env` で渡します（`with` に書くとワークフローファイルに直書きしがちなためです）
+
+```yaml
+      - name: トリアージレポートを作る
+        uses: secleeman/triage-lens@v0.5.0
+        with:
+          scan-file: trivy.json
+          ai: 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
 
 ## AI による対応方針コメント（`--ai`）
 
@@ -346,7 +453,12 @@ CycloneDX には修正版の不在を明示する項目が無いため、読み�
 | コード | 意味 |
 | --- | --- |
 | 0 | 正常終了（外部データを取得できず部分的なレポートになった場合も 0） |
+| 1 | `--fail-on` で指定したランク以上の検出があった |
 | 2 | 入力エラー（ファイルが無い / JSON が壊れている / 対応形式でない / オプションの指定ミス） |
+| 3 | `--fail-on-fetch-error` を指定していて、外部データを取得できなかった |
+
+1 と 3 は `--fail-on` を指定した場合にだけ返します。指定しなければ、
+従来どおり正常に処理できた限り 0 で終わります。
 
 ## 開発
 
@@ -360,7 +472,7 @@ CycloneDX には修正版の不在を明示する項目が無いため、読み�
 GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 で
 テストと lint が実行されます。
 
-## この版（v0.4.1）でできること・できないこと
+## この版（v0.5.0）でできること・できないこと
 
 できること:
 
@@ -368,7 +480,9 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 - CycloneDX（JSON）の SBOM の読み込み（形式は自動判別）
 - EPSS / CISA KEV による優先順位付け
 - 日本語・英語の Markdown レポートの生成
-- **AI による対応方針コメント（`--ai`。APIキーを設定した場合のみ）**
+- AI による対応方針コメント（`--ai`。APIキーを設定した場合のみ）
+- **深刻な検出があったときに CI を止めること（`--fail-on`）**
+- **GitHub Actions への組み込み（composite action）**
 
 まだできないこと（今後のフェーズ）:
 

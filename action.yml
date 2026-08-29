@@ -1,0 +1,94 @@
+# triage-lens を GitHub Actions から呼び出すための composite action。
+#
+# スキャン（Trivy 等）は利用者のワークフローの責務で、この action は行わない。
+# 受け取ったスキャン結果を優先順位付けし、Markdown のレポートを書き出す。
+#
+# 動作確認済みのランナーは ubuntu-latest のみ。
+name: 'triage-lens'
+description: 'Prioritise scanner vulnerability output with public data (EPSS / CISA KEV / CVSS) and generate a triage report'
+author: 'secleeman'
+
+# Marketplace に掲載する場合にそのまま使えるよう、先に入れてある
+# （掲載作業そのものは行っていない）。
+branding:
+  icon: 'filter'
+  color: 'blue'
+
+inputs:
+  scan-file:
+    description: 'Path to the scanner output JSON (Trivy JSON or CycloneDX JSON; the format is detected automatically)'
+    required: true
+  lang:
+    description: 'Report language: ja or en'
+    required: false
+    default: 'ja'
+  fail-on:
+    description: 'Fail the job when a finding at this rank or above exists (p0, p1, p2 or p3). Empty means the job never fails on findings.'
+    required: false
+    default: ''
+  fail-on-fetch-error:
+    description: 'Fail the job when EPSS or the CISA KEV catalog could not be fetched. Only has an effect together with fail-on.'
+    required: false
+    default: 'false'
+  ai:
+    description: 'Add AI-generated remediation notes. Requires ANTHROPIC_API_KEY in the step env, and calls a paid API on every run.'
+    required: false
+    default: 'false'
+  output:
+    description: 'Path of the generated Markdown report'
+    required: false
+    default: 'triage-report.md'
+
+outputs:
+  report-path:
+    description: 'Path of the generated Markdown report'
+    value: ${{ inputs.output }}
+
+runs:
+  using: 'composite'
+  steps:
+    # システムの Python は PEP 668 で保護されており pip install が拒否される。
+    # actions/setup-python に依存せず、標準ライブラリの venv で回避する。
+    - name: Install triage-lens
+      id: install
+      shell: bash
+      env:
+        TRIAGE_LENS_VERSION: '0.5.0'
+      run: |
+        set -euo pipefail
+        venv="${RUNNER_TEMP}/triage-lens-venv"
+        python3 -m venv "${venv}"
+        "${venv}/bin/python" -m pip install --quiet --disable-pip-version-check \
+          "triage-lens==${TRIAGE_LENS_VERSION}"
+        echo "bin=${venv}/bin" >> "${GITHUB_OUTPUT}"
+
+    # inputs の値は env 経由で渡す。run: に ${{ }} を直接展開すると
+    # スクリプトインジェクションの経路になるため。
+    - name: Generate triage report
+      shell: bash
+      env:
+        TRIAGE_LENS_BIN: ${{ steps.install.outputs.bin }}
+        SCAN_FILE: ${{ inputs.scan-file }}
+        # 変数名を LANG にするとロケール設定を壊すため別名にする
+        REPORT_LANG: ${{ inputs.lang }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        FAIL_ON_FETCH_ERROR: ${{ inputs.fail-on-fetch-error }}
+        USE_AI: ${{ inputs.ai }}
+        REPORT_OUTPUT: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+        args=(report --output "${REPORT_OUTPUT}" --lang "${REPORT_LANG}")
+        if [ -n "${FAIL_ON}" ]; then
+          args+=(--fail-on "${FAIL_ON}")
+        fi
+        if [ "${FAIL_ON_FETCH_ERROR}" = "true" ]; then
+          args+=(--fail-on-fetch-error)
+        fi
+        if [ "${USE_AI}" = "true" ]; then
+          args+=(--ai)
+        fi
+        # スキャン結果のパスは -- の後ろに置く。`-` で始まる値を渡されると
+        # オプションとして解釈され、--help ならヘルプを出して終了コード 0 で
+        # 終わる。レポートを作らないまま action が成功扱いになるのを防ぐ。
+        args+=(-- "${SCAN_FILE}")
+        "${TRIAGE_LENS_BIN}/triage-lens" "${args[@]}"

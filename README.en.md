@@ -122,11 +122,123 @@ Omit `-o` to print to standard output.
 | `-o`, `--output` | Output Markdown file | standard output |
 | `--top N` | How many P2 / P3 rows to show (P0 / P1 always show all) | 5 |
 | `--lang {ja,en}` | Report language | `ja` (Japanese) |
+| `--fail-on {p0,p1,p2,p3}` | Exit with code 1 when a finding at this rank or above exists | unset (always 0) |
+| `--fail-on-fetch-error` | With `--fail-on`, exit with code 3 when external data could not be fetched | off |
 | `--ai` | Add AI-generated remediation notes | off |
 | `--ai-limit N` | Maximum number of findings to annotate | 50 |
 | `--ai-model NAME` | Model used for the notes | `claude-haiku-4-5` |
 
 `--lang` controls the report body only. Error messages and `--help` text are in Japanese.
+
+### 3. Stop the build on serious findings (`--fail-on`)
+
+```bash
+triage-lens report trivy-result.json --lang en -o triage-report.md --fail-on p1
+```
+
+Exits with code 1 when at least one finding sits at the given rank **or above**.
+`p1` covers P0 and P1. `p3` is the lowest rank, so it effectively means
+"fail if there is any finding at all".
+
+- **The report is always written, including when the command fails.** The verdict is
+  decided after the report has been written out, so you never lose the one document
+  that explains why the build went red
+- **`--top` does not affect the verdict.** It only limits how many rows are shown;
+  every finding is considered
+- A failed `--ai` run does not change the verdict either
+
+#### When external data could not be fetched
+
+If EPSS or the CISA KEV catalog cannot be fetched, **the verdict becomes more lenient
+than it should be**. Without KEV, findings that would be P0 on the strength of their
+KEV listing drop to P2 or P3.
+
+triage-lens writes a warning to standard error in that case but **does not change the
+exit code** — a brief outage at an upstream service should not turn the build red
+every time.
+
+Pass `--fail-on-fetch-error` if you want it to. The command then exits with code 3
+when the fetch failed.
+
+```bash
+triage-lens report trivy-result.json -o triage-report.md --fail-on p1 --fail-on-fetch-error
+```
+
+"The data could not be fetched" and "there is a matching finding" are different
+situations, so they get different exit codes. When both happen, 3 wins.
+
+## Using it in GitHub Actions
+
+A composite action is available for CI. **It does not run the scanner** — pass it the
+JSON that an earlier step produced.
+
+```yaml
+name: Vulnerability triage
+
+on: [pull_request]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          format: json
+          output: trivy.json
+
+      - name: Build the triage report
+        uses: secleeman/triage-lens@v0.5.0
+        with:
+          scan-file: trivy.json
+          lang: en
+          fail-on: p1
+
+      - name: Keep the report
+        if: always()          # keep it even when fail-on fails the job
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-report
+          path: triage-report.md
+```
+
+### Inputs
+
+| Name | Required | Default | Description |
+| --- | --- | --- | --- |
+| `scan-file` | ✅ | — | Path to the scanner output JSON (format detected automatically) |
+| `lang` | | `ja` | Report language (`ja` / `en`) |
+| `fail-on` | | empty (never fails) | `p0` / `p1` / `p2` / `p3` |
+| `fail-on-fetch-error` | | `false` | `true` exits with code 3 when the fetch failed |
+| `ai` | | `false` | `true` adds AI-generated remediation notes |
+| `output` | | `triage-report.md` | Path of the generated Markdown report |
+
+The only output is `report-path`, the path of the generated report.
+
+### Things worth knowing
+
+- **Pin `uses:` to a `@vX.Y.Z` tag.** There is no moving `@v1` tag on purpose: the
+  contents of a security tool should not change without you noticing
+- **`ubuntu-latest` is the only runner this is tested on.**
+- **Add `if: always()` so the report survives.** Without it you lose the report
+  exactly when `fail-on` fails the job
+- **Leave `ai` at `false` unless you mean it.** Running it on every pull request adds
+  up in API charges. Limit it to manual runs or pushes to main, and pass the key
+  through `env` rather than `with` — keys in `with` tend to end up hardcoded in the
+  workflow file
+
+```yaml
+      - name: Build the triage report
+        uses: secleeman/triage-lens@v0.5.0
+        with:
+          scan-file: trivy.json
+          ai: 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
 
 ## AI-generated remediation notes (`--ai`)
 
@@ -327,7 +439,12 @@ no fix can be read from it, triage-lens reports "Unknown" rather than asserting 
 | Code | Meaning |
 | --- | --- |
 | 0 | Success (including a partial report when external data could not be fetched) |
+| 1 | A finding at or above the `--fail-on` rank exists |
 | 2 | Input error (missing file / broken JSON / unsupported format / bad option) |
+| 3 | `--fail-on-fetch-error` was set and external data could not be fetched |
+
+1 and 3 are only ever returned when `--fail-on` is set. Without it, a run that
+completes still exits 0, as before.
 
 ## Development
 
@@ -341,7 +458,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.4.1) can and cannot do
+## What this version (v0.5.0) can and cannot do
 
 It can:
 
@@ -349,7 +466,9 @@ It can:
 - Read CycloneDX (JSON) SBOMs, with automatic format detection
 - Prioritise using EPSS and CISA KEV
 - Produce Markdown reports in Japanese and English
-- **Add AI-generated remediation notes (`--ai`, only when an API key is set)**
+- Add AI-generated remediation notes (`--ai`, only when an API key is set)
+- **Fail the build on serious findings (`--fail-on`)**
+- **Run inside GitHub Actions as a composite action**
 
 It cannot yet (planned for later phases):
 
