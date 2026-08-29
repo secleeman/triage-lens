@@ -2,6 +2,7 @@
 
 スキャナが出力した脆弱性の一覧を、公開データで優先順位付けして、
 **「どれから直せばいいか」が分かるトリアージレポート（Markdown）** にする CLI ツールです。
+インストールは `pip install triage-lens` の1行です。
 
 *English: [README.en.md](https://github.com/secleeman/triage-lens/blob/main/README.en.md)*
 
@@ -40,6 +41,37 @@ CycloneDX は SBOM（部品表）の形式なので、脆弱性の一覧（`vuln
 SPDX 形式と CycloneDX の XML 表現には対応していません。
 
 ## インストール
+
+```bash
+pip install triage-lens
+```
+
+インストールできたか確認します。
+
+```bash
+triage-lens --help
+```
+
+`pip` が見つからないと言われる場合は、`python -m pip install triage-lens` を試してください。
+
+### 他のパッケージと混ぜたくない場合
+
+コマンドとして使うだけなら、[pipx](https://pipx.pypa.io/) を使うと
+triage-lens 専用の環境に隔離してインストールできます。
+
+```bash
+pipx install triage-lens
+```
+
+### 更新する
+
+```bash
+pip install --upgrade triage-lens
+```
+
+### 開発版（GitHub の最新）を使う
+
+公開されていない変更を試したいときだけ必要です。
 
 ```bash
 git clone https://github.com/secleeman/triage-lens.git
@@ -346,6 +378,16 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 - 日英以外の言語
 - 設定ファイル / Web UI
 - AI にパッチや修正 PR を作らせること
+
+## バグ報告
+
+バグ報告は [GitHub Issues](https://github.com/secleeman/triage-lens/issues) で受け付けています。
+うまく動かなかったときの入力ファイルの形式・実行したコマンド・出たメッセージを
+書いていただけると助かります。
+
+**Issue のコメントでの個別の返信は行っていません。** 内容は必ず読んでいます。
+対応した結果は、コミットとリリースノート（[ROADMAP](https://github.com/secleeman/triage-lens/blob/main/docs/ROADMAP.md)）に
+反映されます。対応済みの Issue は、コメントなしで close することがあります。
 
 ## ライセンス
 

@@ -2,6 +2,7 @@
 
 A CLI tool that takes a scanner's vulnerability list, prioritises it using public data,
 and produces a **triage report (Markdown) that tells you what to fix first**.
+Install with a single line: `pip install triage-lens`.
 
 *日本語: [README.md](https://github.com/secleeman/triage-lens/blob/main/README.md)*
 
@@ -40,6 +41,37 @@ triage-lens does not detect vulnerabilities itself.
 SPDX and the XML representation of CycloneDX are not supported.
 
 ## Installation
+
+```bash
+pip install triage-lens
+```
+
+Check that it worked:
+
+```bash
+triage-lens --help
+```
+
+If `pip` is not found, try `python -m pip install triage-lens`.
+
+### Keeping it isolated
+
+If you only need the command, [pipx](https://pipx.pypa.io/) installs it into its
+own environment:
+
+```bash
+pipx install triage-lens
+```
+
+### Upgrading
+
+```bash
+pip install --upgrade triage-lens
+```
+
+### Installing from source
+
+Only needed to try changes that are not released yet.
 
 ```bash
 git clone https://github.com/secleeman/triage-lens.git
@@ -327,6 +359,16 @@ It cannot yet (planned for later phases):
 - Produce reports in languages other than Japanese and English
 - Use a config file or a web UI
 - Have the AI produce patches or open fix pull requests
+
+## Bug reports
+
+Bug reports are welcome via [GitHub Issues](https://github.com/secleeman/triage-lens/issues). Including the input
+format, the command you ran, and the message you saw makes them easier to act on.
+
+**We do not reply in the issue threads.** Every report is read, and the response
+arrives as a fix in a commit and in the release notes
+([ROADMAP](https://github.com/secleeman/triage-lens/blob/main/docs/ROADMAP.md)). An issue may be closed without a
+comment once it has been addressed.
 
 ## License
 
