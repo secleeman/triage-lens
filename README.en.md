@@ -20,6 +20,14 @@ Optionally, `--ai` adds a one- or two-line note to each finding saying what to
 actually do about it. That part uses the Claude API, so it needs your own API key
 and is billed to you. Without `--ai`, no request is made.
 
+## See the output first
+
+You can read a **report that triage-lens actually produced** before installing anything.
+
+- [English report](https://github.com/secleeman/triage-lens/blob/main/examples/report-en.md)
+- [日本語のレポート](https://github.com/secleeman/triage-lens/blob/main/examples/report-ja.md)
+- [The scan result it was made from, and notes](https://github.com/secleeman/triage-lens/blob/main/examples/README.md)
+
 ## Requirements
 
 - Python 3.11 or later

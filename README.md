@@ -20,6 +20,14 @@
 書いた対応方針コメントを添えられます（Claude API を使うため、こちらは
 利用者ご自身のAPIキーと料金が必要です）。付けなければ通信は発生しません。
 
+## 出力例を見る
+
+インストールする前に、**実際に出力されたレポート**を読めます。
+
+- [日本語のレポート](https://github.com/secleeman/triage-lens/blob/main/examples/report-ja.md)
+- [English report](https://github.com/secleeman/triage-lens/blob/main/examples/report-en.md)
+- [もとにしたスキャン結果と補足](https://github.com/secleeman/triage-lens/blob/main/examples/README.md)
+
 ## 必要なもの
 
 - Python 3.11 以上
