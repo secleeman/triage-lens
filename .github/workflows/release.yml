@@ -1,0 +1,103 @@
+name: Release
+
+# 公開ミラー（secleeman/triage-lens）で vX.Y.Z のタグを push すると、
+# PyPI に triage-lens を公開する。
+#
+# 認証は PyPI の Trusted Publishing（OIDC）を使う。
+# GitHub が発行する短命のトークンで認証するため、
+# APIトークンを Secrets に保存しない（長期トークンを持たない）。
+#
+# 事前に PyPI 側で Trusted Publisher の登録が必要
+# （プロジェクト名・リポジトリ・このファイル名・environment を登録する）。
+
+on:
+  push:
+    tags:
+      # v1.2.3 の形だけを対象にする（v1.2 や 1.2.3 では動かない）
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+# 既定では何の権限も与えず、必要なジョブだけで明示的に付ける
+permissions: {}
+
+jobs:
+  build:
+    name: 配布物のビルドと検証
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # サポートする最も古い Python でビルドと検証を行う
+          python-version: "3.11"
+
+      - name: タグとパッケージのバージョンが一致するか確認
+        # ここで止めておかないと、タグと中身の版数が食い違ったまま
+        # PyPI に上がってしまう。PyPI は同じ版数を上書きできない。
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(python -c 'import tomllib, pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"])')"
+          echo "タグ: ${tag_version} / pyproject.toml: ${pkg_version}"
+          if [ "${tag_version}" != "${pkg_version}" ]; then
+            echo "::error::タグ ${GITHUB_REF_NAME} と pyproject.toml の version=${pkg_version} が一致しません"
+            exit 1
+          fi
+
+      - name: 依存関係をインストール
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: lint (ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: テスト (pytest)
+        # タグの push では CI ワークフローが走らないため、ここで再度実行する
+        run: pytest
+
+      - name: 配布物をビルド
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+
+      - name: 配布物のメタデータを検証
+        # PyPI にアップロードしてから README が表示できないと分かるのを防ぐ
+        run: python -m twine check --strict dist/*
+
+      - name: 配布物を受け渡す
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: PyPI に公開
+    needs: build
+    runs-on: ubuntu-latest
+
+    # PyPI 側の Trusted Publisher に登録する environment 名と揃えること
+    environment:
+      name: pypi
+      url: https://pypi.org/p/triage-lens
+
+    permissions:
+      # OIDC トークンの発行に必要。これが Trusted Publishing の認証情報になる
+      id-token: write
+
+    steps:
+      - name: 配布物を受け取る
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: PyPI にアップロード
+        # パスワードやAPIトークンは渡さない（OIDC で認証する）
+        uses: pypa/gh-action-pypi-publish@v1.14.2

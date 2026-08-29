@@ -1,0 +1,7 @@
+# 配布物（sdist）に入れるものを絞る。
+#
+# setuptools は既定で tests/test*.py を sdist に入れてしまう。
+# tests/ には dev リポジトリ専用のテストが混ざりうるうえ、conftest.py と
+# fixtures/ は入らないため、入れても動かない中途半端なテストが配られる。
+# PyPI に配るのは製品コードだけにする。
+prune tests

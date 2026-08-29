@@ -3,7 +3,7 @@
 A CLI tool that takes a scanner's vulnerability list, prioritises it using public data,
 and produces a **triage report (Markdown) that tells you what to fix first**.
 
-*日本語: [README.md](README.md)*
+*日本語: [README.md](https://github.com/secleeman/triage-lens/blob/main/README.md)*
 
 What the priority is based on:
 
@@ -309,7 +309,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.3.0) can and cannot do
+## What this version (v0.4.0) can and cannot do
 
 It can:
 
@@ -330,4 +330,4 @@ It cannot yet (planned for later phases):
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](https://github.com/secleeman/triage-lens/blob/main/LICENSE) for details.

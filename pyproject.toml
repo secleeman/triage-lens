@@ -1,14 +1,36 @@
 [build-system]
-requires = ["setuptools>=68"]
+# PEP 639 の license / license-files（SPDX 表記）を扱えるのは setuptools 77.0.3 以降
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "triage-lens"
-version = "0.3.0"
-description = "スキャナの脆弱性リストを公開データで優先順位付けし、トリアージレポートを生成するCLIツール"
+version = "0.4.0"
+description = "Prioritise scanner vulnerability output with public data (EPSS / CISA KEV / CVSS) and generate a triage report / スキャナの脆弱性リストを公開データで優先順位付けし、トリアージレポートを生成する CLI"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+# 個人情報を載せないため、名前だけにしてメールアドレスは書かない
+authors = [{ name = "secleeman" }]
+keywords = ["security", "vulnerability", "triage", "epss", "kev", "cve", "sbom", "cyclonedx", "trivy"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Natural Language :: English",
+  "Natural Language :: Japanese",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+]
+# PEP 639 では license 式と "License ::" 分類子の併記が禁止されているため、
+# ライセンスの分類子は入れない（入れるとビルドが失敗する）
 dependencies = ["httpx>=0.27"]
 
 [project.optional-dependencies]
@@ -17,6 +39,11 @@ dev = ["pytest>=8", "ruff>=0.16,<0.17"]
 
 [project.urls]
 Homepage = "https://github.com/secleeman/triage-lens"
+Repository = "https://github.com/secleeman/triage-lens"
+# バグ報告の受け先。PyPI のページから辿れるようにする（受付のみ。返信は行わない）
+Issues = "https://github.com/secleeman/triage-lens/issues"
+Documentation = "https://github.com/secleeman/triage-lens/blob/main/README.md"
+Changelog = "https://github.com/secleeman/triage-lens/blob/main/docs/ROADMAP.md"
 
 [project.scripts]
 triage-lens = "triage_lens.cli:main"

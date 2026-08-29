@@ -3,7 +3,7 @@
 スキャナが出力した脆弱性の一覧を、公開データで優先順位付けして、
 **「どれから直せばいいか」が分かるトリアージレポート（Markdown）** にする CLI ツールです。
 
-*English: [README.en.md](README.en.md)*
+*English: [README.en.md](https://github.com/secleeman/triage-lens/blob/main/README.en.md)*
 
 判定に使う情報:
 
@@ -328,7 +328,7 @@ CycloneDX には修正版の不在を明示する項目が無いため、読み�
 GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 で
 テストと lint が実行されます。
 
-## この版（v0.3.0）でできること・できないこと
+## この版（v0.4.0）でできること・できないこと
 
 できること:
 
@@ -349,4 +349,4 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 
 ## ライセンス
 
-MIT License. 詳細は [LICENSE](LICENSE) を参照してください。
+MIT License. 詳細は [LICENSE](https://github.com/secleeman/triage-lens/blob/main/LICENSE) を参照してください。
