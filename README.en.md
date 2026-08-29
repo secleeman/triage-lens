@@ -341,7 +341,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.4.0) can and cannot do
+## What this version (v0.4.1) can and cannot do
 
 It can:
 
