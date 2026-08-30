@@ -89,6 +89,7 @@ def parse_bom(document: Any) -> ScanInput:
     try:
         components = _index_components(document)
         scope_known = _scope_known(document)
+        dev_property_used = _dev_property_used(document)
         vulnerabilities = _collect_vulnerabilities(document, components, artifact_name)
     except InputError:
         raise
@@ -102,6 +103,7 @@ def parse_bom(document: Any) -> ScanInput:
         artifact_name=artifact_name,
         vulnerabilities=vulnerabilities,
         scope_known=scope_known,
+        dev_property_used=dev_property_used,
     )
 
 
@@ -187,6 +189,19 @@ def _scope_known(document: dict[str, Any]) -> bool:
     component にも判別の材料が書かれていることがあるため。
     """
     return any(_has_scope_signal(component) for component in _iter_dependency_components(document))
+
+
+def _dev_property_used(document: dict[str, Any]) -> bool:
+    """区別の根拠に、開発依存を明示する property が使われたか。
+
+    `scope` の値は生成ツールによって意味が揺れる。実際に、開発依存へ `optional` を
+    付ける SBOM が確認されている（triage-lens はこれを本番依存として扱うため、
+    分類が実態と真逆になる）。`scope` だけを根拠にしたときはレポートに注記を出す。
+
+    property は「開発依存である」と直接書いたものなので、1件でも使われていれば
+    その SBOM は意図をもって開発依存を表していると見てよい。
+    """
+    return any(_has_dev_property(component) for component in _iter_dependency_components(document))
 
 
 def _has_scope_signal(component: dict[str, Any]) -> bool:

@@ -260,3 +260,76 @@ def test_対象そのものが参照されても部品として引ける():
     scan = parse_bom(document)
 
     assert scan.vulnerabilities[0].pkg_name == "app"
+
+
+# --- 分類の根拠が scope だけかどうか ------------------------------------------
+
+
+def test_scopeだけが根拠なら根拠を記録する():
+    """`scope` の意味は生成ツールによって揺れるため、根拠を後段に伝える。"""
+    scan = parse_bom(bom([component(scope="excluded")], [vulnerability()]))
+
+    assert scan.scope_known is True
+    assert scan.dev_property_used is False
+
+
+def test_devプロパティが使われていれば根拠を記録する():
+    dev = component(properties=[{"name": "cdx:npm:package:development", "value": "true"}])
+    scan = parse_bom(bom([dev], [vulnerability()]))
+
+    assert scan.dev_property_used is True
+
+
+def test_scopeとpropertyが混在すればproperty使用として扱う():
+    """1件でも「開発依存である」と明示されていれば、意図をもって表していると見てよい。"""
+    scan = parse_bom(
+        bom(
+            [
+                component(ref="a", name="plain", scope="required"),
+                component(
+                    ref="b",
+                    name="dev",
+                    properties=[{"name": "cdx:npm:package:development", "value": "true"}],
+                ),
+            ],
+            [vulnerability(ref="a"), vulnerability("CVE-2020-7598", ref="b")],
+        )
+    )
+
+    assert scan.scope_known is True
+    assert scan.dev_property_used is True
+
+
+def test_区別できない入力ではpropertyも使われていない():
+    scan = parse_bom(bom([component()], [vulnerability()]))
+
+    assert scan.scope_known is False
+    assert scan.dev_property_used is False
+
+
+def test_未知のpropertyは根拠として数えない():
+    other = component(
+        scope="excluded", properties=[{"name": "cdx:npm:package:bundled", "value": "true"}]
+    )
+    scan = parse_bom(bom([other], [vulnerability()]))
+
+    assert scan.dev_property_used is False
+
+
+def test_TrivyのJSONは分類の根拠を持たない(fixtures_dir):
+    scan = load_scan(fixtures_dir / "trivy_sample.json")
+
+    assert scan.dev_property_used is False
+
+
+def test_scopeを明示したSBOMはscopeだけが根拠(fixtures_dir):
+    scan = load_scan(fixtures_dir / "cyclonedx_scope_explicit.json")
+
+    assert scan.scope_known is True
+    assert scan.dev_property_used is False
+
+
+def test_propertiesでdevを表すSBOMはproperty使用(fixtures_dir):
+    scan = load_scan(fixtures_dir / "cyclonedx_npm_properties.json")
+
+    assert scan.dev_property_used is True

@@ -33,6 +33,13 @@ _JA: dict[str, str] = {
         "EPSS スコアの一部または全部を取得できませんでした。"
         "取得できなかったものは CVSS のみで判定しています。"
     ),
+    # 部品表だけの入力（SPDX など）
+    "note_sbom_only": (
+        "この入力は部品表（SBOM）のみで、脆弱性の一覧を含んでいません。"
+        "「検出0件」は脆弱性が無いという意味ではありません。"
+        "`trivy sbom <ファイル> --format json` でこの SBOM をスキャンした出力を渡すと、"
+        "優先順位を付けられます。"
+    ),
     # 本番依存 / 開発依存の区別
     "note_scope_unknown": (
         "この入力には本番依存 / 開発依存を区別する情報が含まれていないため、"
@@ -41,6 +48,10 @@ _JA: dict[str, str] = {
     "group_heading": "{label}（{scope}）",
     "group_runtime": "本番依存",
     "group_dev": "開発依存のみ",
+    "scope_basis_note": (
+        "本番 / 開発の分類は SBOM の scope 値に基づいています。"
+        "生成元により意味が異なる場合があります。"
+    ),
     # サマリ
     "summary_heading": "サマリ",
     "summary_total": "検出総数: {count}件",
@@ -146,6 +157,12 @@ _EN: dict[str, str] = {
     "warn_epss_incomplete": (
         "Some or all EPSS scores could not be fetched. Those findings were ranked using CVSS alone."
     ),
+    "note_sbom_only": (
+        "This input is a bill of materials only - it carries no vulnerability list. "
+        "Zero findings does not mean there are none. "
+        "Run `trivy sbom <file> --format json` on this SBOM and pass that output "
+        "instead to get a prioritised report."
+    ),
     "note_scope_unknown": (
         "This input carries no information distinguishing runtime from development "
         "dependencies, so all findings are listed together."
@@ -153,6 +170,10 @@ _EN: dict[str, str] = {
     "group_heading": "{label} ({scope})",
     "group_runtime": "Runtime dependencies",
     "group_dev": "Development-only dependencies",
+    "scope_basis_note": (
+        "The runtime / development split is based on the SBOM's scope values. "
+        "Their meaning varies between the tools that generate them."
+    ),
     "summary_heading": "Summary",
     "summary_total": "Total findings: {count}",
     "summary_table_header": "| Priority | Count | Action |",

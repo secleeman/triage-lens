@@ -42,6 +42,14 @@ EXIT_FETCH_ERROR = 3
 #: `--fail-on` に指定できるランク
 FAIL_ON_CHOICES = [priority.name.lower() for priority in Priority]
 
+#: 入力が部品表だけだったときに標準エラーへ出す1行。
+#: SPDX 2.x には脆弱性を書く場所がほとんど無く、検出0件が普通の結果になる。
+_SBOM_ONLY_WARNING = (
+    "注意: この入力は部品表（SBOM）のみで、脆弱性の一覧を含んでいません。"
+    "「検出0件」は脆弱性が無いという意味ではありません。"
+    "`trivy sbom <ファイル> --format json` の出力を渡してください。"
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -52,11 +60,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     report_parser = subparsers.add_parser(
         "report",
-        help="スキャナ出力（Trivy JSON / CycloneDX JSON）からトリアージレポート（Markdown）を作る",
+        help=(
+            "スキャナ出力（Trivy JSON / CycloneDX JSON / SPDX JSON）から"
+            "トリアージレポート（Markdown）を作る"
+        ),
     )
     report_parser.add_argument(
         "input",
-        help="スキャナ出力のJSONファイル（Trivy の --format json / CycloneDX。形式は自動判別）",
+        help=(
+            "スキャナ出力のJSONファイル"
+            "（Trivy の --format json / CycloneDX / SPDX。形式は自動判別）"
+        ),
     )
     report_parser.add_argument(
         "-o",
@@ -143,6 +157,10 @@ def _validate_options(parser: argparse.ArgumentParser, args: argparse.Namespace)
 
 def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) -> int:
     scan = load_scan(args.input)
+    if scan.sbom_only:
+        # レポート本文にも同じことを書くが、CI では本文を誰も読まない。
+        # 0件で緑になったことに気づけないと、静かな見落としになる。
+        _write_error(_SBOM_ONLY_WARNING)
     items, epss_complete, kev_source = enrich(scan, client=client, lang=args.lang)
 
     ai_annotation: AiAnnotation | None = None
@@ -159,6 +177,8 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         lang=args.lang,
         ai=ai_annotation,
         scope_known=scan.scope_known,
+        dev_property_used=scan.dev_property_used,
+        sbom_only=scan.sbom_only,
     )
     _write_output(report, args.output)
 

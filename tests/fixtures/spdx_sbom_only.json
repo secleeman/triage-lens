@@ -1,0 +1,68 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "demo-service@0.2.0",
+  "documentNamespace": "https://example.test/spdx/demo-service-0.2.0",
+  "creationInfo": {
+    "created": "2026-08-30T00:00:00Z",
+    "creators": ["Tool: example-sbom-generator-0.1.0"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-service",
+      "name": "demo-service",
+      "versionInfo": "0.2.0",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "APPLICATION"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-express",
+      "name": "express",
+      "versionInfo": "4.18.2",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/express@4.18.2"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-pino",
+      "name": "pino",
+      "versionInfo": "8.14.1",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/pino@8.14.1"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:pino_project:pino:8.14.1:*:*:*:*:node.js:*:*"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-service"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-service",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-express"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-service",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-pino"
+    }
+  ]
+}

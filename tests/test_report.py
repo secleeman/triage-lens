@@ -430,3 +430,103 @@ def test_0件の行は両言語で出る(lang):
     report = render(make_split_items(runtime=2, development=0), scope_known=True, lang=lang)
 
     assert catalog(lang)("summary_dev_none") in report
+
+
+# --- 分類の根拠が scope だけのときの注記 --------------------------------------
+
+
+def test_scopeだけが根拠なら注記を出す():
+    report = render(make_split_items(), scope_known=True, dev_property_used=False)
+
+    assert catalog("ja")("scope_basis_note") in report
+
+
+def test_devプロパティが使われていれば注記を出さない():
+    """「開発依存である」と明示されていれば、scope の揺れを心配しなくてよい。"""
+    report = render(make_split_items(), scope_known=True, dev_property_used=True)
+
+    assert catalog("ja")("scope_basis_note") not in report
+
+
+def test_開発依存が0件でも注記を出す():
+    """開発依存に optional を誤用した SBOM は、ここで「全件が本番」と断定表示される。
+
+    分類が実態と真逆になりうるのは、まさにこの場合。分割していないからといって
+    注記を省くと、いちばん誤解を生む状態で根拠が伝わらない。
+    """
+    report = render(make_split_items(runtime=3, development=0), scope_known=True)
+    text = catalog("ja")
+
+    assert text("summary_dev_none") in report
+    assert text("scope_basis_note") in report
+
+
+def test_区別していなければ注記を出さない():
+    """分類そのものが無いので、その根拠を書いても意味がない。"""
+    report = render(build_items(), scope_known=False)
+
+    assert catalog("ja")("scope_basis_note") not in report
+
+
+def test_検出が無ければ注記を出さない():
+    report = render([], scope_known=True)
+
+    assert catalog("ja")("scope_basis_note") not in report
+
+
+def test_注記は限界の注意書きの直前に置く():
+    report = render(make_split_items(), scope_known=True)
+    text = catalog("ja")
+
+    assert report.index(text("scope_basis_note")) < report.index(text("limits_note"))
+    assert report.rstrip().endswith(text("limits_note")), "最終行は限界の注意書きのまま"
+
+
+@pytest.mark.parametrize("lang", ["ja", "en"])
+def test_注記は両言語で出る(lang):
+    report = render(make_split_items(), scope_known=True, lang=lang)
+
+    assert catalog(lang)("scope_basis_note") in report
+
+
+# --- 部品表だけの入力（脆弱性の一覧が無い） ------------------------------
+
+
+def test_部品表だけの入力なら0件の意味を書く():
+    """SPDX は脆弱性を書く場所がほとんど無く、0件が普通の結果になる。
+
+    そのまま「検出された脆弱性はありません。」だけを出すと、安全だったと読まれる。
+    """
+    report = render([], sbom_only=True)
+    text = catalog("ja")
+
+    assert text("note_sbom_only") in report
+    assert text("no_findings") in report
+
+
+def test_部品表だけの注記はサマリより前に出す():
+    """「0件」の意味が変わる話なので、表を読む前に目に入る位置に置く。"""
+    report = render([], sbom_only=True)
+    text = catalog("ja")
+
+    assert report.index(text("note_sbom_only")) < report.index(text("summary_heading"))
+
+
+def test_脆弱性を含む入力では部品表の注記を出さない():
+    report = render(build_items())
+
+    assert catalog("ja")("note_sbom_only") not in report
+
+
+def test_検出0件でも部品表でなければ注記を出さない():
+    """Trivy / CycloneDX の0件は「脆弱性が見つからなかった」で、意味が違う。"""
+    report = render([])
+
+    assert catalog("ja")("note_sbom_only") not in report
+
+
+@pytest.mark.parametrize("lang", ["ja", "en"])
+def test_部品表だけの注記は両言語で出る(lang):
+    report = render([], sbom_only=True, lang=lang)
+
+    assert catalog(lang)("note_sbom_only") in report

@@ -62,6 +62,8 @@ def render_report(
     lang: str = DEFAULT_LANG,
     ai: AiAnnotation | None = None,
     scope_known: bool = False,
+    dev_property_used: bool = False,
+    sbom_only: bool = False,
 ) -> str:
     """優先度付きの脆弱性一覧から Markdown レポートを組み立てる。
 
@@ -76,7 +78,15 @@ def render_report(
     上の2つはどちらも1つの表になるが、**「材料が無かった」のか「区別したうえで0件
     だった」のかは書き分ける**。読む人にとって意味がまったく違うため。
 
+    `dev_property_used` は、その区別の根拠に「開発依存である」と明示した property が
+    使われたか。**使われておらず `scope` だけが根拠のときは、末尾に注記を出す。**
+    `scope` の意味は生成ツールによって揺れ、誤用されていると分類が実態と逆になる。
+
     **区別の有無は優先度には影響しない**（表示の分け方だけが変わる）。
+
+    `sbom_only` は、入力が部品表だけで脆弱性の一覧を含んでいなかったかどうか。
+    真なら冒頭に注記を出す。SPDX のように脆弱性を書く場所がほとんど無い形式では
+    「検出0件」が普通の結果になり、そのままでは「安全だった」と読まれるため。
     """
     text = catalog(lang)
     counts = count_by_priority(items)
@@ -97,6 +107,11 @@ def render_report(
         lines += [f"> ⚠️ {warning}" for warning in warnings]
         lines.append("")
 
+    # 「0件」の意味が変わる話なので、表より先に出す。入力の性質の説明であって
+    # 取得の失敗ではないため、警告の印（⚠️）は付けない。
+    if sbom_only:
+        lines += [f"> {text('note_sbom_only')}", ""]
+
     # 区別できないことは異常ではないので、警告の印（⚠️）は付けない。
     # 検出が無いときは分ける対象そのものが無いため出さない。
     if items and not scope_known:
@@ -114,6 +129,9 @@ def render_report(
 
     lines += _footer(text)
     lines += _ai_footer(text, ai)
+    lines += _scope_basis_section(
+        text, items, scope_known=scope_known, dev_property_used=dev_property_used
+    )
     lines += _limits_section(text, items)
     return "\n".join(lines).rstrip() + "\n"
 
@@ -399,6 +417,28 @@ def _ai_footer(text: Catalog, ai: AiAnnotation | None) -> list[str]:
         lines.append(text("ai_limit_note", count=ai.target_count))
     lines.append("")
     return lines
+
+
+def _scope_basis_section(
+    text: Catalog,
+    items: Sequence[EnrichedVulnerability],
+    *,
+    scope_known: bool,
+    dev_property_used: bool,
+) -> list[str]:
+    """本番 / 開発の分類を `scope` だけで決めたときに添える注記。
+
+    `scope` の意味は生成ツールによって揺れる。開発依存へ `optional` を付ける SBOM が
+    実際にあり、triage-lens はそれを本番依存として扱うため、**分類が実態と真逆に
+    なりうる**。根拠が `scope` しか無かったことを、読む人に伝えておく。
+
+    「開発依存である」と明示した property が使われていれば揺れの心配は小さいので、
+    そのときは出さない。区別していないとき（`scope_known` が偽）も、分類そのものが
+    無いので出さない。
+    """
+    if not items or not scope_known or dev_property_used:
+        return []
+    return [text("scope_basis_note"), ""]
 
 
 def _limits_section(text: Catalog, items: Sequence[EnrichedVulnerability]) -> list[str]:

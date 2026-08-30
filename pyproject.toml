@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triage-lens"
-version = "0.6.0"
+version = "0.7.0"
 description = "Prioritise scanner vulnerability output with public data (EPSS / CISA KEV / CVSS) and generate a triage report / スキャナの脆弱性リストを公開データで優先順位付けし、トリアージレポートを生成する CLI"
 readme = "README.md"
 requires-python = ">=3.11"

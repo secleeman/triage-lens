@@ -53,7 +53,7 @@ runs:
       id: install
       shell: bash
       env:
-        TRIAGE_LENS_VERSION: '0.6.0'
+        TRIAGE_LENS_VERSION: '0.7.0'
       run: |
         set -euo pipefail
         venv="${RUNNER_TEMP}/triage-lens-venv"

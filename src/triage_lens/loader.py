@@ -1,6 +1,6 @@
 """入力ファイルの形式を判別して読み込む。
 
-利用者に形式を指定させない。CycloneDX か Trivy JSON かは中身から判断する。
+利用者に形式を指定させない。CycloneDX か Trivy JSON か SPDX かは中身から判断する。
 判別の順序を固定しておくことで、挙動を一意にする。
 """
 
@@ -11,12 +11,15 @@ from .cyclonedx import looks_like_cyclonedx, parse_bom
 from .errors import InputError
 from .models import ScanInput
 from .parsing import read_json_document
+from .spdx import looks_like_spdx, parse_sbom
 from .trivy import looks_like_trivy, parse_scan
 
 _UNSUPPORTED_FORMAT_MESSAGE = (
-    "Trivy の JSON 出力ではないようです（CycloneDX 形式（JSON）でもありません）。"
-    "`trivy image --format json -o result.json` か "
-    "`trivy image --format cyclonedx -o sbom.cdx.json` で出力したファイルを指定してください。"
+    "Trivy の JSON 出力ではないようです（CycloneDX / SPDX 形式（JSON）でもありません）。"
+    "`trivy image --format json -o result.json` / "
+    "`trivy image --format cyclonedx -o sbom.cdx.json` / "
+    "`trivy image --format spdx-json -o sbom.spdx.json` の"
+    "いずれかで出力したファイルを指定してください。"
 )
 
 
@@ -31,4 +34,6 @@ def parse_document(document: Any) -> ScanInput:
         return parse_bom(document)
     if looks_like_trivy(document):
         return parse_scan(document)
+    if looks_like_spdx(document):
+        return parse_sbom(document)
     raise InputError(_UNSUPPORTED_FORMAT_MESSAGE)

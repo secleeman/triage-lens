@@ -1,0 +1,33 @@
+{
+  "spdxVersion": "SPDX-2.2",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "legacy-app@3.1.0",
+  "documentNamespace": "https://example.test/spdx/legacy-app-3.1.0",
+  "creationInfo": {
+    "created": "2026-08-30T00:00:00Z",
+    "creators": ["Tool: example-sbom-generator-0.1.0"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-openssl",
+      "name": "openssl",
+      "versionInfo": "1.1.1k",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:openssl:openssl:1.1.1k:*:*:*:*:*:*:*"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-openssl",
+      "relationshipType": "RUNTIME_DEPENDENCY_OF",
+      "relatedSpdxElement": "SPDXRef-DOCUMENT"
+    }
+  ]
+}

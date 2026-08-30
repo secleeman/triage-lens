@@ -179,7 +179,7 @@ def test_対応していない形式のJSONは終了コード2(fixtures_dir, cap
     captured = capsys.readouterr()
     assert code == EXIT_INPUT_ERROR
     assert "Trivy の JSON 出力ではないようです" in captured.err
-    assert "CycloneDX 形式（JSON）でもありません" in captured.err
+    assert "CycloneDX / SPDX 形式（JSON）でもありません" in captured.err
 
 
 @pytest.mark.parametrize("top", ["-1", "abc"])
@@ -381,3 +381,65 @@ def test_壊れたCycloneDXは終了コード2(tmp_path, capsys):
     assert code == EXIT_INPUT_ERROR
     assert "vulnerabilities が一覧ではありません" in captured.err
     assert "Traceback" not in captured.err
+
+
+# --- 部品表だけの入力（SPDX） -------------------------------------------
+
+
+def test_SPDXの入力からレポートを作れる(fixtures_dir, tmp_path):
+    output = tmp_path / "report.md"
+
+    with make_client(_handler) as client:
+        code = main(
+            ["report", str(fixtures_dir / "spdx_sample.json"), "-o", str(output)], client=client
+        )
+
+    report = output.read_text(encoding="utf-8")
+    assert code == EXIT_OK
+    assert "- 対象: sample-app@1.4.0" in report
+    assert "検出総数: 4件" in report
+
+
+def test_部品表だけの入力では標準エラーにも注記を出す(fixtures_dir, tmp_path, capsys):
+    """CI では本文を誰も読まない。0件で緑になったことに気づけるようにする。"""
+    output = tmp_path / "report.md"
+
+    with make_client(_offline_handler) as client:
+        code = main(
+            ["report", str(fixtures_dir / "spdx_sbom_only.json"), "-o", str(output)], client=client
+        )
+
+    captured = capsys.readouterr()
+    assert code == EXIT_OK
+    assert "部品表（SBOM）のみ" in captured.err
+    assert "trivy sbom" in captured.err
+    assert "この入力は部品表（SBOM）のみで" in output.read_text(encoding="utf-8")
+
+
+def test_脆弱性を含む入力では部品表の注記を出さない(fixtures_dir, tmp_path, capsys):
+    output = tmp_path / "report.md"
+
+    with make_client(_handler) as client:
+        main(["report", str(fixtures_dir / "trivy_sample.json"), "-o", str(output)], client=client)
+
+    assert "部品表（SBOM）のみ" not in capsys.readouterr().err
+
+
+def test_部品表だけでもfail_onの終了コードは変えない(fixtures_dir, tmp_path):
+    """0件で落とすかどうかは別の意思決定。ここでは従来どおり 0 で終わる。"""
+    output = tmp_path / "report.md"
+
+    with make_client(_offline_handler) as client:
+        code = main(
+            [
+                "report",
+                str(fixtures_dir / "spdx_sbom_only.json"),
+                "-o",
+                str(output),
+                "--fail-on",
+                "p3",
+            ],
+            client=client,
+        )
+
+    assert code == EXIT_OK

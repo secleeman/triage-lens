@@ -1,7 +1,7 @@
 # Vulnerability Triage Report
 
 - Target: sample-app:1.4.0
-- Generated: 2026-08-30 09:40
+- Generated: 2026-08-30 11:20
 - Criteria: listed in CISA KEV / EPSS >= 0.1 / CVSS >= 7.0
 
 > This input carries no information distinguishing runtime from development dependencies, so all findings are listed together.

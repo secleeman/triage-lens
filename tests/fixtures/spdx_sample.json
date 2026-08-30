@@ -1,0 +1,119 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "sample-app@1.4.0",
+  "documentNamespace": "https://example.test/spdx/sample-app-1.4.0",
+  "creationInfo": {
+    "created": "2026-08-30T00:00:00Z",
+    "creators": ["Tool: example-sbom-generator-0.1.0"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-app",
+      "name": "sample-app",
+      "versionInfo": "1.4.0",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "APPLICATION"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-lodash",
+      "name": "lodash",
+      "versionInfo": "4.17.15",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/lodash@4.17.15"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "advisory",
+          "referenceLocator": "https://nvd.nist.gov/vuln/detail/CVE-2021-23337"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-ws",
+      "name": "ws",
+      "versionInfo": "7.4.5",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE_MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/ws@7.4.5"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:ws_project:ws:7.4.5:*:*:*:*:node.js:*:*"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "advisory",
+          "referenceLocator": "https://nvd.nist.gov/vuln/detail/CVE-2021-32640"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-minimist",
+      "name": "minimist",
+      "versionInfo": "1.2.5",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/minimist@1.2.5"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "advisory",
+          "referenceLocator": "https://nvd.nist.gov/vuln/detail/CVE-2021-44906"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-example-test-runner",
+      "name": "example-test-runner",
+      "versionInfo": "2.0.0",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "url",
+          "referenceLocator": "https://example.test/advisories/CVE-2020-28498"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-app"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-lodash",
+      "relationshipType": "RUNTIME_DEPENDENCY_OF",
+      "relatedSpdxElement": "SPDXRef-Package-app"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-ws",
+      "relationshipType": "DEPENDENCY_OF",
+      "relatedSpdxElement": "SPDXRef-Package-app"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-minimist",
+      "relationshipType": "DEV_DEPENDENCY_OF",
+      "relatedSpdxElement": "SPDXRef-Package-app"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-example-test-runner",
+      "relationshipType": "TEST_DEPENDENCY_OF",
+      "relatedSpdxElement": "SPDXRef-Package-app"
+    }
+  ]
+}

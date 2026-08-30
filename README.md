@@ -40,6 +40,7 @@
 | --- | --- | --- |
 | Trivy の JSON | `trivy image --format json -o result.json <対象>` | Phase 1 から対応 |
 | CycloneDX（JSON） | `trivy image --format cyclonedx -o sbom.cdx.json <対象>` | 仕様 1.4 以降。他のツールが出力した SBOM も読めます |
+| SPDX（JSON） | `trivy image --format spdx-json -o sbom.spdx.json <対象>` | SPDX 2.2 / 2.3。**下記のとおり、多くの場合は検出0件になります** |
 
 **形式は中身を見て自動で判別します。** オプションでの指定は不要です。
 
@@ -47,7 +48,28 @@ CycloneDX は SBOM（部品表）の形式なので、脆弱性の一覧（`vuln
 含まないファイルもあります。その場合は「検出0件」のレポートになります
 （triage-lens 自身は脆弱性を検出しません）。
 
-SPDX 形式と CycloneDX の XML 表現には対応していません。
+#### SPDX を渡したときに気をつけること
+
+**SPDX 2.x には脆弱性の一覧を書く場所がほとんどありません。** CVE を書けるのは
+`packages[].externalRefs[]` のうち `referenceCategory` が `SECURITY` のものだけで
+（しかも `advisory` などの参照が使えるのは 2.3 から）、実際に出回る SPDX の多くは
+ここに何も持っていません。そのため **SPDX を渡すと、たいていは「検出0件」になります。**
+
+これは「脆弱性が無い」という意味ではありません。判定する材料が入っていない、という意味です。
+その場合、triage-lens はレポートの冒頭と標準エラーにその旨を出します。
+
+逆に SECURITY 参照がある場合も、**その参照は「影響を受ける」と断言しているとは限りません**
+（仕様上、影響が無いことを示す勧告も同じ形で書けます）。SPDX からの検出は
+多めに出ることがあります。
+
+脆弱性まで見たいときは、SBOM をスキャンし直した出力を渡してください。
+
+```bash
+trivy sbom sbom.spdx.json --format json -o result.json
+triage-lens report result.json
+```
+
+SPDX 3.x、tag-value / RDF / YAML 表現、CycloneDX の XML 表現には対応していません。
 
 ## インストール
 
@@ -231,7 +253,7 @@ jobs:
           output: trivy.json
 
       - name: トリアージレポートを作る
-        uses: secleeman/triage-lens@v0.6.0
+        uses: secleeman/triage-lens@v0.7.0
         with:
           scan-file: trivy.json
           fail-on: p1
@@ -270,7 +292,7 @@ jobs:
 
 ```yaml
       - name: トリアージレポートを作る
-        uses: secleeman/triage-lens@v0.6.0
+        uses: secleeman/triage-lens@v0.7.0
         with:
           scan-file: trivy.json
           ai: 'true'
@@ -510,6 +532,27 @@ CycloneDX の SBOM から、次の順で判別します。
 - 迷ったときは**本番依存に倒します**。本番のものを「開発だけ」に入れると見落としになりますが、
   逆は多めに出るだけで見落としにはなりません
 
+### ⚠️ `scope` の意味は生成ツールによって揺れます
+
+**`scope` の使い方は SBOM を作るツールに委ねられており、仕様どおりとは限りません。**
+
+実際に、**開発依存に `scope: optional` を付けている SBOM** が確認されています。
+triage-lens は仕様どおり `optional` を本番依存として扱うため、この SBOM では
+**「開発依存の検出: 0件（すべて本番依存）」と、実態と真逆の分類が出ます。**
+
+- **npm 系では `npm sbom --sbom-format cyclonedx` の property 方式が確実です。**
+  `cdx:npm:package:development` は「開発依存である」と直接書いたものなので、
+  `scope` のような解釈の揺れがありません
+- `scope: optional` は**本番依存**になります。開発依存を表す意図で使われていても、
+  triage-lens はそれを読み取れません
+- **分類の根拠が `scope` だけだった場合、レポートの末尾に次の1行が入ります。**
+  property が使われていれば出ません
+
+> 本番 / 開発の分類は SBOM の scope 値に基づいています。生成元により意味が異なる場合があります。
+
+分類が実態と合っているか怪しいときは、`package.json` の `devDependencies` と
+見比べるか、`npm sbom` で作り直した SBOM を渡してみてください。
+
 ### 開発依存の検出が0件のとき
 
 区別はできたものの開発依存の検出が1件も無い場合は、**分割せずに従来どおり1つの表**で
@@ -608,12 +651,13 @@ triage-lens は**依存関係にその版があるかどうか**しか見てい�
 GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 で
 テストと lint が実行されます。
 
-## この版（v0.6.0）でできること・できないこと
+## この版（v0.7.0）でできること・できないこと
 
 できること:
 
 - Trivy の JSON 出力の読み込み
 - CycloneDX（JSON）の SBOM の読み込み（形式は自動判別）
+- SPDX（JSON）の SBOM の読み込み（**多くの場合は検出0件になります**）
 - EPSS / CISA KEV による優先順位付け
 - 日本語・英語の Markdown レポートの生成
 - AI による対応方針コメント（`--ai`。APIキーを設定した場合のみ）
@@ -624,7 +668,7 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 
 まだできないこと（今後のフェーズ）:
 
-- SPDX 形式の入力
+- SPDX 3.x / tag-value / RDF / YAML 表現の入力
 - CycloneDX の XML 表現
 - `npm audit --json` / OSV 形式のネイティブ入力
 - **到達性の解析**（脆弱なコードが実際に呼ばれるかの判定）

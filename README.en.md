@@ -40,6 +40,7 @@ You can read a **report that triage-lens actually produced** before installing a
 | --- | --- | --- |
 | Trivy JSON | `trivy image --format json -o result.json <target>` | Supported since Phase 1 |
 | CycloneDX (JSON) | `trivy image --format cyclonedx -o sbom.cdx.json <target>` | Spec 1.4 or later. SBOMs from other tools work too |
+| SPDX (JSON) | `trivy image --format spdx-json -o sbom.spdx.json <target>` | SPDX 2.2 / 2.3. **Usually yields zero findings — see below** |
 
 **The format is detected from the file contents.** There is no flag to specify it.
 
@@ -47,7 +48,29 @@ CycloneDX is an SBOM format, so a file may contain no vulnerability list
 (`vulnerabilities`). In that case you get a report with zero findings —
 triage-lens does not detect vulnerabilities itself.
 
-SPDX and the XML representation of CycloneDX are not supported.
+#### What to know before passing SPDX
+
+**SPDX 2.x has almost nowhere to record vulnerabilities.** A CVE can only appear in
+`packages[].externalRefs[]` entries whose `referenceCategory` is `SECURITY` (and the
+`advisory` reference type only exists from 2.3 onwards). Most SPDX files in the wild
+carry nothing there, so **passing SPDX usually produces zero findings.**
+
+That does not mean there are no vulnerabilities — it means the input carries nothing to
+judge. When this happens, triage-lens says so at the top of the report and on stderr.
+
+When SECURITY references *are* present, note that such a reference does not necessarily
+assert that the package is affected — the spec allows the same form to point at an
+advisory saying it is not. Findings from SPDX may therefore over-report.
+
+To get findings, rescan the SBOM and pass that output instead:
+
+```bash
+trivy sbom sbom.spdx.json --format json -o result.json
+triage-lens report result.json
+```
+
+SPDX 3.x, the tag-value / RDF / YAML representations, and the XML representation of
+CycloneDX are not supported.
 
 ## Installation
 
@@ -229,7 +252,7 @@ jobs:
           output: trivy.json
 
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.6.0
+        uses: secleeman/triage-lens@v0.7.0
         with:
           scan-file: trivy.json
           lang: en
@@ -270,7 +293,7 @@ The only output is `report-path`, the path of the generated report.
 
 ```yaml
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.6.0
+        uses: secleeman/triage-lens@v0.7.0
         with:
           scan-file: trivy.json
           ai: 'true'
@@ -497,6 +520,30 @@ From a CycloneDX SBOM, in this order:
 - When in doubt, findings fall to **runtime**. Putting a runtime package in the
   development-only table hides it; the reverse only makes the list longer
 
+### ⚠️ `scope` means different things to different generators
+
+**How `scope` gets used is up to the tool that writes the SBOM, and it does not always
+follow the spec.**
+
+SBOMs have been found in the wild that mark **development dependencies with
+`scope: optional`**. triage-lens follows the spec and counts `optional` as runtime, so
+for those files it reports **"Development-only findings: 0 (every finding is a runtime
+dependency)" — the exact opposite of reality.**
+
+- **For npm, the property form written by `npm sbom --sbom-format cyclonedx` is the
+  reliable one.** `cdx:npm:package:development` states outright that a package is a
+  development dependency, so there is nothing to interpret
+- `scope: optional` counts as **runtime**, even when the generator meant it as
+  "development" — triage-lens cannot tell the difference
+- **When the split rests on `scope` alone, the report ends with this line.** It is
+  omitted when the property was used
+
+> The runtime / development split is based on the SBOM's scope values. Their meaning
+> varies between the tools that generate them.
+
+If the split looks wrong, compare it against `devDependencies` in `package.json`, or
+regenerate the SBOM with `npm sbom` and pass that instead.
+
 ### When there are no development-only findings
 
 If the distinction is available but no finding lands in development-only, the report is
@@ -596,12 +643,13 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.6.0) can and cannot do
+## What this version (v0.7.0) can and cannot do
 
 It can:
 
 - Read Trivy JSON output
 - Read CycloneDX (JSON) SBOMs, with automatic format detection
+- Read SPDX (JSON) SBOMs (**usually yields zero findings**)
 - Prioritise using EPSS and CISA KEV
 - Produce Markdown reports in Japanese and English
 - Add AI-generated remediation notes (`--ai`, only when an API key is set)
@@ -612,7 +660,7 @@ It can:
 
 It cannot yet (planned for later phases):
 
-- Read SPDX input
+- Read SPDX 3.x, or the tag-value / RDF / YAML representations
 - Read the XML representation of CycloneDX
 - Read `npm audit --json` or OSV format natively
 - **Perform reachability analysis** (whether the affected code is actually called)

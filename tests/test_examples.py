@@ -245,6 +245,7 @@ def test_npm_report_matches_current_output(npm_report: str, npm_lang: str) -> No
         generated_at=_generated_at(npm_report, npm_lang),
         lang=npm_lang,
         scope_known=scan.scope_known,
+        dev_property_used=scan.dev_property_used,
     )
     assert regenerated == npm_report, (
         f"examples/{NPM_REPORTS[npm_lang].name} が現在の出力と食い違っている。"

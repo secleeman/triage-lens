@@ -20,6 +20,21 @@ def test_CycloneDXの出力をCycloneDXとして読む(fixtures_dir):
     assert len(scan.vulnerabilities) == 9
 
 
+def test_SPDXの出力をSPDXとして読む(fixtures_dir):
+    scan = load_scan(fixtures_dir / "spdx_sample.json")
+
+    assert scan.artifact_name == "sample-app@1.4.0"
+    assert len(scan.vulnerabilities) == 4
+
+
+def test_部品表だけのSPDXも読める(fixtures_dir):
+    """読めたうえで「部品表だけだった」と分かる状態にする（0件を安全と読ませない）。"""
+    scan = load_scan(fixtures_dir / "spdx_sbom_only.json")
+
+    assert scan.vulnerabilities == []
+    assert scan.sbom_only is True
+
+
 def test_脆弱性が無いCycloneDXも読める(fixtures_dir):
     scan = load_scan(fixtures_dir / "cyclonedx_empty.json")
 
@@ -76,7 +91,6 @@ def test_bomFormatの表記ゆれでTrivy出力を取りこぼさない():
     "document",
     [
         {"name": "demo-service", "dependencies": {}},
-        {"spdxVersion": "SPDX-2.3", "packages": []},
         {"bomFormat": "SPDX"},
         [],
         "text",
@@ -89,14 +103,16 @@ def test_どちらの形式でもなければ入力エラー(document):
         parse_document(document)
 
 
-def test_未対応形式のエラー文に両方の形式を書く(fixtures_dir):
+def test_未対応形式のエラー文にすべての形式を書く(fixtures_dir):
+    """SPDX を渡して落ちた利用者が、対応していないのかどうかを判断できるようにする。"""
     with pytest.raises(InputError) as excinfo:
         load_scan(fixtures_dir / "unsupported.json")
 
     message = str(excinfo.value)
-    assert "CycloneDX 形式（JSON）でもありません" in message
+    assert "CycloneDX / SPDX 形式（JSON）でもありません" in message
     assert "--format json" in message
     assert "--format cyclonedx" in message
+    assert "--format spdx-json" in message
 
 
 def test_壊れたJSONは入力エラーになる(fixtures_dir):
