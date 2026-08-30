@@ -27,6 +27,21 @@ BOM_FORMAT = "CycloneDX"
 #: `components` の入れ子をたどる深さの上限（壊れた入力での無限再帰よけ）
 MAX_COMPONENT_DEPTH = 20
 
+#: `scope` の値のうち、開発・テストなど実行時に到達しない部品を表すもの。
+#: `optional` は「実行時に任意」であって開発専用ではないため、ここには入れない
+#: （npm は optionalDependencies にこの値を付ける）。
+SCOPE_EXCLUDED = "excluded"
+
+#: 開発依存であることを示す `properties[].name`。値が "true" のときだけ採用する。
+#: 生成ツールごとの項目名の対応表であって、個別の事例に対する分岐ではない。
+#: `scope` を使わずにこれで dev を表す生成ツールがあるため、両方を見る必要がある。
+DEV_PROPERTY_NAMES = frozenset(
+    {
+        # npm 本体の `npm sbom --sbom-format cyclonedx`
+        "cdx:npm:package:development",
+    }
+)
+
 #: `ratings[].method` の値。現行世代（v3系 / v4）を先に見て、無ければ v2 を見る。
 #: 世代の違うスコアを混ぜて最大値を取ると、実態より高い深刻度になってしまう。
 RATING_METHOD_GROUPS: tuple[tuple[str, ...], ...] = (
@@ -73,6 +88,7 @@ def parse_bom(document: Any) -> ScanInput:
     artifact_name = _artifact_name(document)
     try:
         components = _index_components(document)
+        scope_known = _scope_known(document)
         vulnerabilities = _collect_vulnerabilities(document, components, artifact_name)
     except InputError:
         raise
@@ -82,7 +98,11 @@ def parse_bom(document: Any) -> ScanInput:
             "SBOM のファイルが壊れていないか確認してください。"
         ) from exc
 
-    return ScanInput(artifact_name=artifact_name, vulnerabilities=vulnerabilities)
+    return ScanInput(
+        artifact_name=artifact_name,
+        vulnerabilities=vulnerabilities,
+        scope_known=scope_known,
+    )
 
 
 def _artifact_name(document: Any) -> str:
@@ -106,33 +126,101 @@ def _index_components(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     `metadata.component` 自身も参照されうるため索引に含める。
     """
     index: dict[str, dict[str, Any]] = {}
-
-    metadata = document.get("metadata")
-    if isinstance(metadata, dict):
-        _add_component(index, metadata.get("component"), depth=0)
-
-    _add_components(index, document.get("components"), depth=0)
+    for component in _iter_components(document):
+        ref = as_optional_text(component.get("bom-ref"))
+        # 同じ bom-ref が重複していたら最初のものを採用する（仕様上は一意）
+        if ref and ref not in index:
+            index[ref] = component
     return index
 
 
-def _add_components(index: dict[str, dict[str, Any]], components: Any, *, depth: int) -> None:
+def _iter_components(document: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """SBOM に載っている component を、入れ子も含めて順に返す。
+
+    `metadata.component`（スキャン対象そのもの）も含む。脆弱性から参照されうるため。
+    """
+    metadata = document.get("metadata")
+    if isinstance(metadata, dict):
+        yield from _walk_component(metadata.get("component"), depth=0)
+    yield from _iter_dependency_components(document)
+
+
+def _iter_dependency_components(document: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """`components[]` 配下の component だけを、入れ子も含めて順に返す。
+
+    `metadata.component` を含めない。あれはスキャン対象そのものであって依存ではなく、
+    そこに書かれた `scope` は依存の区別について何も語らないため。
+    """
+    yield from _walk_components(document.get("components"), depth=0)
+
+
+def _walk_components(components: Any, *, depth: int) -> Iterator[dict[str, Any]]:
     """入れ子の階層でも型を検証する（浅い階層だけ厳しくしても意味がないため）。"""
     if components is None or depth > MAX_COMPONENT_DEPTH:
         return
     if not isinstance(components, list):
         raise InputError(_COMPONENTS_NOT_LIST_MESSAGE)
     for component in components:
-        _add_component(index, component, depth=depth)
+        yield from _walk_component(component, depth=depth)
 
 
-def _add_component(index: dict[str, dict[str, Any]], component: Any, *, depth: int) -> None:
+def _walk_component(component: Any, *, depth: int) -> Iterator[dict[str, Any]]:
     if not isinstance(component, dict) or depth > MAX_COMPONENT_DEPTH:
         return
-    ref = as_optional_text(component.get("bom-ref"))
-    # 同じ bom-ref が重複していたら最初のものを採用する（仕様上は一意）
-    if ref and ref not in index:
-        index[ref] = component
-    _add_components(index, component.get("components"), depth=depth + 1)
+    yield component
+    yield from _walk_components(component.get("components"), depth=depth + 1)
+
+
+def _scope_known(document: dict[str, Any]) -> bool:
+    """入力が本番依存 / 開発依存を区別できるか。
+
+    `scope` は省略時に `required` とみなす仕様なので、何も書かれていない SBOM を
+    素直に読むと「全件が本番依存」に見えてしまう。**明示的に書かれた材料が1つも
+    無ければ「区別できない」** とし、区別できているかのように見せない。
+
+    見るのは `components[]` 配下だけで、`metadata.component` は見ない。あれは
+    スキャン対象そのもので、そこに `scope: required` と書かれていても依存の区別に
+    ついては何も分からない。含めてしまうと、材料が無いのに「区別できた（全件が
+    本番依存）」というレポートを出してしまう。
+
+    索引（`_index_components`）ではなく SBOM をたどり直すのは、`bom-ref` を持たない
+    component にも判別の材料が書かれていることがあるため。
+    """
+    return any(_has_scope_signal(component) for component in _iter_dependency_components(document))
+
+
+def _has_scope_signal(component: dict[str, Any]) -> bool:
+    """この component に、本番 / 開発を判別する材料が明示されているか。"""
+    if as_optional_text(component.get("scope")) is not None:
+        return True
+    return _has_dev_property(component)
+
+
+def _is_dev_only(component: dict[str, Any]) -> bool:
+    """開発時にしか使われない依存か。判別できないものは本番依存に倒す。
+
+    `properties` を先に見るのは、`scope` を使わずに properties だけで dev を表す
+    生成ツールがあるため（npm 本体の `npm sbom` など）。
+    """
+    if _has_dev_property(component):
+        return True
+    scope = as_optional_text(component.get("scope"))
+    return scope is not None and scope.strip().lower() == SCOPE_EXCLUDED
+
+
+def _has_dev_property(component: dict[str, Any]) -> bool:
+    """`properties[]` に「開発依存」を示す項目があるか。"""
+    properties = component.get("properties")
+    if not isinstance(properties, list):
+        return False
+    for item in properties:
+        if not isinstance(item, dict):
+            continue
+        name = as_optional_text(item.get("name"))
+        value = as_optional_text(item.get("value"))
+        if name in DEV_PROPERTY_NAMES and value is not None and value.strip().lower() == "true":
+            return True
+    return False
 
 
 def _collect_vulnerabilities(
@@ -215,6 +303,9 @@ def _build_vulnerability(
         # CycloneDX には「修正版が存在しない」ことを明示する項目が無い。
         # 読み取れなかったときは「修正版なし」と断定せず「不明」と表示する。
         fixed_version_known=fixed is not None,
+        # SBOM に載っていない部品を参照している検出は、component が空になるため
+        # 本番依存として扱われる。判別できないものを開発側に寄せない。
+        dev_only=_is_dev_only(component),
     )
 
 

@@ -6,11 +6,20 @@ triage-lens が実際に出力したレポートです。インストールし�
 These are reports that triage-lens actually produced. You can see
 **what the output looks like** here without installing anything.
 
+出力例は2組あります。**本番依存 / 開発依存を区別できる入力かどうかで、レポートの
+見た目が変わります。**
+
+There are two sets. **The report looks different depending on whether the input can
+distinguish runtime from development dependencies.**
+
 | ファイル / File | 中身 / Contents |
 | --- | --- |
 | [`trivy-sample.json`](trivy-sample.json) | 入力にしたスキャン結果（Trivy の JSON） / The scan result used as input (Trivy JSON) |
 | [`report-ja.md`](report-ja.md) | 日本語のレポート（既定） / The report in Japanese (default) |
 | [`report-en.md`](report-en.md) | 英語のレポート（`--lang en`） / The report in English (`--lang en`) |
+| [`cyclonedx-npm-sample.json`](cyclonedx-npm-sample.json) | npm 系の SBOM（CycloneDX）。本番 / 開発の区別を持つ / An npm-style CycloneDX SBOM that carries the runtime/development distinction |
+| [`report-npm-ja.md`](report-npm-ja.md) | 上を入力にした日本語のレポート / The Japanese report built from it |
+| [`report-npm-en.md`](report-npm-en.md) | 上を入力にした英語のレポート / The English report built from it |
 
 ## このサンプルについて / About this sample
 
@@ -27,6 +36,25 @@ These are reports that triage-lens actually produced. You can see
 - The findings are chosen so that each of P0 / P1 / P2 / P3 appears at least once.
 - The input keeps **only the fields triage-lens reads** from a Trivy JSON file. Real
   `trivy image --format json` output contains more fields; you can pass it as-is.
+
+### npm 系のサンプルについて / About the npm sample
+
+- `demo-shop` も**架空のプロジェクト名**です。パッケージ名と CVE は実在のものです。
+- 本番 / 開発の区別は、npm 系の生成ツールが実際に使う2通りの書き方をどちらも入れてあります。
+  `scope`（`required` / `optional`）と、`properties` の `cdx:npm:package:development` です。
+  **`scope: optional` は本番依存として扱います**（npm は optionalDependencies に
+  この値を付けるため。実行時に使われうるものを「開発だけ」に隠さないためです）。
+- **注意: `npm sbom --sbom-format cyclonedx` の出力そのものではありません。**
+  `npm sbom` が出すのは部品表だけで、脆弱性情報（`vulnerabilities`）は含まれません。
+  このサンプルは、その形に脆弱性情報を足したものです。
+
+- `demo-shop` is also a **made-up project name**; the package names and CVEs are real.
+- The sample carries both of the ways npm-side tools express the distinction: `scope`
+  (`required` / `optional`) and the `cdx:npm:package:development` property.
+  **`scope: optional` counts as a runtime dependency** — npm sets it on
+  optionalDependencies, which may well be used at runtime.
+- **Note: this is not raw `npm sbom --sbom-format cyclonedx` output.** `npm sbom`
+  emits a component list with no `vulnerabilities` section; this sample adds one.
 
 ## データの取得時点 / When the data was fetched
 
@@ -58,6 +86,8 @@ Run from the repository root. It needs network access to EPSS and CISA KEV
 ```bash
 triage-lens report examples/trivy-sample.json -o examples/report-ja.md
 triage-lens report examples/trivy-sample.json --lang en -o examples/report-en.md
+triage-lens report examples/cyclonedx-npm-sample.json -o examples/report-npm-ja.md
+triage-lens report examples/cyclonedx-npm-sample.json --lang en -o examples/report-npm-en.md
 ```
 
 `tests/test_examples.py` が、置いてあるレポートが入力および現在の出力形式と

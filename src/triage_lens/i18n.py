@@ -33,10 +33,20 @@ _JA: dict[str, str] = {
         "EPSS スコアの一部または全部を取得できませんでした。"
         "取得できなかったものは CVSS のみで判定しています。"
     ),
+    # 本番依存 / 開発依存の区別
+    "note_scope_unknown": (
+        "この入力には本番依存 / 開発依存を区別する情報が含まれていないため、"
+        "区別せずに全件を表示しています。"
+    ),
+    "group_heading": "{label}（{scope}）",
+    "group_runtime": "本番依存",
+    "group_dev": "開発依存のみ",
     # サマリ
     "summary_heading": "サマリ",
     "summary_total": "検出総数: {count}件",
     "summary_table_header": "| 優先度 | 件数 | 目安 |",
+    "summary_table_header_split": "| 優先度 | 件数 | うち本番依存 | 目安 |",
+    "summary_dev_none": "開発依存のみの検出: 0件（すべて本番依存です）",
     "no_findings": "検出された脆弱性はありません。",
     # 各ランクの行動指針
     "action_P0": "今すぐ対応",
@@ -92,6 +102,16 @@ _JA: dict[str, str] = {
     "ai_model_note": "- 生成モデル: {model}",
     "ai_scope_note": "- 対象: P0 と P1 の検出のみ",
     "ai_limit_note": "- 上限により {count}件までを対象に生成しました",
+    # パッケージ単位の推奨アクション
+    "recommend_heading": "推奨アクション",
+    "recommend_note": (
+        "検出をパッケージ単位にまとめたものです。"
+        "表示件数の指定（--top）に関わらず、検出されたすべてを対象にしています。"
+    ),
+    "recommend_table_header": "| パッケージ | 現在 | 上げ先 | 解消されるCVE | 最高優先度 |",
+    "recommend_resolved": "{count}件",
+    "recommend_resolved_rest": "{count}件（ほかに{rest}件は{kind}）",
+    "recommend_kind_separator": "・",
     # 末尾の説明
     "footer_heading": "優先度の付け方",
     "footer_table_header": "| 優先度 | 条件 |",
@@ -102,6 +122,12 @@ _JA: dict[str, str] = {
     "footer_sort_note": "同一ランク内は EPSS の高い順、次に CVSS の高い順に並べています。",
     "footer_sources": (
         "データ出典: CISA KEV カタログ / FIRST.org EPSS / CVSS はスキャナ出力の値。"
+    ),
+    # このレポートで分かることの限界
+    "limits_note": (
+        "この判定は「その版が依存関係に含まれているか」に基づいています。"
+        "該当する機能を実際に使っているか、外部から到達しうるかまでは見ていないため、"
+        "実際の影響はここに書かれたものより小さいことも大きいこともあります。"
     ),
 }
 
@@ -120,9 +146,18 @@ _EN: dict[str, str] = {
     "warn_epss_incomplete": (
         "Some or all EPSS scores could not be fetched. Those findings were ranked using CVSS alone."
     ),
+    "note_scope_unknown": (
+        "This input carries no information distinguishing runtime from development "
+        "dependencies, so all findings are listed together."
+    ),
+    "group_heading": "{label} ({scope})",
+    "group_runtime": "Runtime dependencies",
+    "group_dev": "Development-only dependencies",
     "summary_heading": "Summary",
     "summary_total": "Total findings: {count}",
     "summary_table_header": "| Priority | Count | Action |",
+    "summary_table_header_split": "| Priority | Count | Runtime | Action |",
+    "summary_dev_none": ("Development-only findings: 0 (every finding is a runtime dependency)"),
     "no_findings": "No vulnerabilities were found.",
     "action_P0": "Patch immediately",
     "action_P1": "Fix soon",
@@ -174,6 +209,17 @@ _EN: dict[str, str] = {
     "ai_model_note": "- Model: {model}",
     "ai_scope_note": "- Scope: P0 and P1 findings only",
     "ai_limit_note": "- Limited to the first {count} findings",
+    "recommend_heading": "Recommended actions",
+    "recommend_note": (
+        "Findings grouped by package. This table covers every finding, regardless of "
+        "the display limit (--top)."
+    ),
+    "recommend_table_header": (
+        "| Package | Installed | Upgrade to | CVEs resolved | Highest priority |"
+    ),
+    "recommend_resolved": "{count}",
+    "recommend_resolved_rest": "{count} (plus {rest} left: {kind})",
+    "recommend_kind_separator": " / ",
     "footer_heading": "How priorities are assigned",
     "footer_table_header": "| Priority | Condition |",
     "condition_p0": "Listed in CISA KEV - exploitation has been observed in the wild",
@@ -185,6 +231,11 @@ _EN: dict[str, str] = {
     ),
     "footer_sources": (
         "Sources: CISA KEV catalog / FIRST.org EPSS / CVSS as reported by the scanner."
+    ),
+    "limits_note": (
+        "These priorities are based on whether an affected version is present in your "
+        "dependencies. Whether the affected code is actually used, or reachable from "
+        "outside, is not assessed - the real impact may be smaller or larger than shown here."
     ),
 }
 

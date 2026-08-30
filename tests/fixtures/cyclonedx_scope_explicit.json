@@ -1,0 +1,110 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:5c2b0000-0000-4000-8000-000000000001",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-30T03:00:00Z",
+    "component": {
+      "bom-ref": "root-component",
+      "type": "application",
+      "name": "demo-site",
+      "version": "2.1.0"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:npm/lodash@4.17.15",
+      "type": "library",
+      "name": "lodash",
+      "version": "4.17.15",
+      "purl": "pkg:npm/lodash@4.17.15",
+      "scope": "required"
+    },
+    {
+      "bom-ref": "pkg:npm/tar@6.1.0",
+      "type": "library",
+      "name": "tar",
+      "version": "6.1.0",
+      "purl": "pkg:npm/tar@6.1.0",
+      "scope": "optional"
+    },
+    {
+      "bom-ref": "pkg:npm/minimist@1.2.0",
+      "type": "library",
+      "name": "minimist",
+      "version": "1.2.0",
+      "purl": "pkg:npm/minimist@1.2.0",
+      "scope": "excluded"
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "bom-ref": "urn:uuid:5c2b0000-0000-4000-8000-000000000101",
+      "id": "CVE-2020-8203",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 7.4, "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:npm/lodash@4.17.15",
+          "versions": [
+            { "version": "4.17.15", "status": "affected" },
+            { "version": "4.17.20", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:5c2b0000-0000-4000-8000-000000000102",
+      "id": "CVE-2021-23337",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 7.2, "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:npm/lodash@4.17.15",
+          "versions": [
+            { "version": "4.17.15", "status": "affected" },
+            { "version": "4.17.21", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:5c2b0000-0000-4000-8000-000000000103",
+      "id": "CVE-2021-37713",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 8.2, "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:npm/tar@6.1.0",
+          "versions": [
+            { "version": "6.1.0", "status": "affected" },
+            { "version": "6.1.9", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:5c2b0000-0000-4000-8000-000000000104",
+      "id": "CVE-2020-7598",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 5.6, "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:npm/minimist@1.2.0",
+          "versions": [
+            { "version": "1.2.0", "status": "affected" },
+            { "version": "1.2.3", "status": "unaffected" }
+          ]
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:uuid:5c2b0000-0000-4000-8000-000000000105",
+      "id": "CVE-2022-25883",
+      "ratings": [{ "source": { "name": "nvd" }, "score": 5.3, "method": "CVSSv31" }],
+      "affects": [
+        {
+          "ref": "pkg:npm/semver@7.3.5",
+          "versions": [{ "version": "7.3.5", "status": "affected" }]
+        }
+      ]
+    }
+  ]
+}

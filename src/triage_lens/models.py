@@ -44,6 +44,11 @@ class Vulnerability:
     #: CycloneDX には「修正版が存在しない」ことを明示する項目が無いため、
     #: 修正版が読み取れなかったときに「修正版なし」と断定せず「不明」と書くために使う。
     fixed_version_known: bool = True
+    #: 開発時にしか使われない依存か。
+    #: 判別の材料が入力に無いときは全件 False（本番依存）になるため、この値だけでは
+    #: 「本番依存だと分かっている」のか「区別できていない」のかを区別できない。
+    #: 入力全体で区別できたかどうかは `ScanInput.scope_known` を見ること。
+    dev_only: bool = False
 
     @property
     def dedupe_key(self) -> tuple[str, str, str, str]:
@@ -89,6 +94,11 @@ class ScanInput:
 
     artifact_name: str
     vulnerabilities: list[Vulnerability]
+    #: 入力が本番依存 / 開発依存を区別できるか。
+    #: CycloneDX の `scope` は省略時に `required` とみなす仕様のため、何も書かれていない
+    #: SBOM をそのまま読むと「全件が本番依存」に見えてしまう。区別できているのか、
+    #: 区別する材料が無いだけなのかを取り違えないよう、入力単位で持つ。
+    scope_known: bool = False
 
 
 #: 値が読み取れなかったときに入れる表記。

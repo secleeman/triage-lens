@@ -8,6 +8,9 @@ examples/ は「インストールせずに出力の実物を見る」ための�
 - いまのコードで作り直しても同じ文面になること（出力形式の変更に取り残されていない）
 - P0〜P3 が1件以上ずつ出ていて、省略された行が無いこと（例として成立している）
 
+出力例は2組ある。Trivy の JSON（本番 / 開発を区別できない入力）と、npm 系の
+CycloneDX（区別できる入力）で、レポートの見た目が変わるためどちらも置いてある。
+
 外部APIには接続しない。レポートに書かれている EPSS / KEV の値を読み取って
 そのまま作り直すため、この検査は committed されたファイルだけで完結する。
 """
@@ -172,5 +175,96 @@ def test_reports_are_not_from_the_future() -> None:
     """
     limit = datetime.now() + timedelta(days=1)
     for lang, path in REPORTS.items():
+        generated = _generated_at(path.read_text(encoding="utf-8"), lang)
+        assert generated <= limit, f"生成日時が先の日付になっている: {path.name} ({generated})"
+
+
+# --- npm 系の SBOM（本番 / 開発を区別できる入力）の出力例 ---------------------
+
+#: 本番依存 / 開発依存に分かれたレポートを見せるための入力
+NPM_INPUT = EXAMPLES_DIR / "cyclonedx-npm-sample.json"
+
+#: 言語ごとのレポート
+NPM_REPORTS = {lang: EXAMPLES_DIR / f"report-npm-{lang}.md" for lang in SUPPORTED_LANGS}
+
+
+@pytest.fixture(scope="module", params=sorted(NPM_REPORTS))
+def npm_lang(request) -> str:
+    return request.param
+
+
+@pytest.fixture(scope="module")
+def npm_report(npm_lang: str) -> str:
+    return NPM_REPORTS[npm_lang].read_text(encoding="utf-8")
+
+
+def test_npm_example_files_exist() -> None:
+    assert NPM_INPUT.is_file()
+    for path in NPM_REPORTS.values():
+        assert path.is_file(), f"出力例が無い: {path.name}"
+
+
+def test_npm_sample_input_distinguishes_dependency_scope() -> None:
+    """区別できる入力であること（区別できなくなったら例として成り立たない）。"""
+    scan = load_scan(NPM_INPUT)
+
+    assert scan.artifact_name == "demo-shop@1.0.0"
+    assert scan.scope_known is True
+    assert any(vuln.dev_only for vuln in scan.vulnerabilities), "開発依存の検出が無い"
+    assert any(not vuln.dev_only for vuln in scan.vulnerabilities), "本番依存の検出が無い"
+
+
+def test_npm_report_splits_by_dependency_scope(npm_report: str, npm_lang: str) -> None:
+    """本番依存と開発依存が別の表に出ていること。"""
+    text = catalog(npm_lang)
+
+    assert text("group_runtime") in npm_report
+    assert text("group_dev") in npm_report
+    assert text("note_scope_unknown") not in npm_report
+
+
+def test_npm_report_lists_every_finding(npm_report: str) -> None:
+    scan = load_scan(NPM_INPUT)
+    assert len(_rows(npm_report)) == len(scan.vulnerabilities), (
+        "レポートに出ている件数が入力と合わない（表示件数の上限で省略された可能性）"
+    )
+
+
+def test_npm_report_has_no_fetch_warning(npm_report: str) -> None:
+    assert "⚠️" not in npm_report, "外部データが欠けたまま生成された出力例が置かれている"
+
+
+def test_npm_report_matches_current_output(npm_report: str, npm_lang: str) -> None:
+    """いまのコードで作り直しても同じ文面になること。"""
+    scan = load_scan(NPM_INPUT)
+    epss_scores, kev_ids = _external_data(npm_report, npm_lang)
+    items = prioritize(scan.vulnerabilities, epss_scores, kev_ids, lang=npm_lang)
+    regenerated = render_report(
+        items,
+        artifact_name=scan.artifact_name,
+        generated_at=_generated_at(npm_report, npm_lang),
+        lang=npm_lang,
+        scope_known=scan.scope_known,
+    )
+    assert regenerated == npm_report, (
+        f"examples/{NPM_REPORTS[npm_lang].name} が現在の出力と食い違っている。"
+        "examples/README.md の手順で作り直すこと"
+    )
+
+
+def test_npm_reports_share_one_data_snapshot() -> None:
+    generated = {
+        lang: _generated_at(path.read_text(encoding="utf-8"), lang)
+        for lang, path in NPM_REPORTS.items()
+    }
+    timestamps = sorted(generated.values())
+    assert (timestamps[-1] - timestamps[0]).total_seconds() <= 3600, (
+        f"言語ごとに生成時点がずれている: {generated}"
+    )
+
+
+def test_npm_reports_are_not_from_the_future() -> None:
+    limit = datetime.now() + timedelta(days=1)
+    for lang, path in NPM_REPORTS.items():
         generated = _generated_at(path.read_text(encoding="utf-8"), lang)
         assert generated <= limit, f"生成日時が先の日付になっている: {path.name} ({generated})"

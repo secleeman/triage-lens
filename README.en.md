@@ -26,6 +26,7 @@ You can read a **report that triage-lens actually produced** before installing a
 
 - [English report](https://github.com/secleeman/triage-lens/blob/main/examples/report-en.md)
 - [日本語のレポート](https://github.com/secleeman/triage-lens/blob/main/examples/report-ja.md)
+- [A report split by runtime / development dependencies](https://github.com/secleeman/triage-lens/blob/main/examples/report-npm-en.md) (from an npm SBOM)
 - [The scan result it was made from, and notes](https://github.com/secleeman/triage-lens/blob/main/examples/README.md)
 
 ## Requirements
@@ -109,6 +110,35 @@ CycloneDX (SBOM):
 ```bash
 trivy image --format cyclonedx -o sbom.cdx.json sample-app:1.4.0
 ```
+
+#### Producing the input file on Windows
+
+The Windows binaries Trivy ships are **not code-signed**. Where Smart App Control or
+SmartScreen is enabled, running them may be blocked. That comes from how Trivy is
+distributed; triage-lens cannot work around it.
+
+You do not need to turn any security feature off. Any of these produces a usable input:
+
+| Route | Example |
+| --- | --- |
+| Trivy under WSL | `wsl trivy fs . --format json -o result.json` |
+| Trivy via Docker Desktop | `docker run --rm -v "%cd%:/src" aquasec/trivy fs /src --format json -o /src/result.json` |
+| osv-scanner CycloneDX output | `osv-scanner --format cyclonedx-1-5 -L package-lock.json > sbom.cdx.json` |
+
+When writing from WSL or Docker, **write to a path Windows can read** (`/mnt/c/...`
+under WSL, or the mounted directory under Docker).
+
+**Do not pass `npm sbom` output straight through.**
+
+```bash
+npm sbom --sbom-format cyclonedx > sbom.cdx.json   # this is not a vulnerability list
+```
+
+`npm sbom` emits **a component list only** — it has no `vulnerabilities` section. Passing
+it to triage-lens produces a report with zero findings, which means **there was nothing to
+assess**, not that the project is clean. Detecting vulnerabilities is the scanner's job.
+
+The `npm audit --json` format is not supported.
 
 ### 2. Build the triage report
 
@@ -199,7 +229,7 @@ jobs:
           output: trivy.json
 
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.5.0
+        uses: secleeman/triage-lens@v0.6.0
         with:
           scan-file: trivy.json
           lang: en
@@ -240,7 +270,7 @@ The only output is `report-path`, the path of the generated report.
 
 ```yaml
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.5.0
+        uses: secleeman/triage-lens@v0.6.0
         with:
           scan-file: trivy.json
           ai: 'true'
@@ -434,6 +464,106 @@ no fix can be read from it, triage-lens reports "Unknown" rather than asserting 
 - A vulnerability referencing a component that is not in the SBOM still gets a row
   (the package name shows as "(unknown)")
 
+## Runtime vs development dependencies
+
+When the input carries that information, findings are split into **two tables — runtime
+dependencies and development-only dependencies**. The summary gains a "Runtime" column.
+
+```
+| Priority | Count | Runtime | Action |
+| P2 (Medium) | 17 | 3 | Plan a fix |
+```
+
+**Priorities (P0-P3) are unaffected.** A development-only finding is not downgraded, and
+it is not excluded from `--fail-on`. Only the grouping of the tables changes.
+
+### What the distinction is read from
+
+From a CycloneDX SBOM, in this order:
+
+| Signal | Result |
+| --- | --- |
+| `properties[]` has `cdx:npm:package:development` set to `"true"` | Development-only |
+| `scope` is `excluded` | Development-only |
+| `scope` is `required` / `optional` / absent | Runtime |
+| The component is not in the SBOM | Runtime |
+
+- **`scope: optional` counts as runtime.** npm sets it on optionalDependencies. It means
+  "optional at runtime", not "for development" — something that may well run in production
+  should not be hidden in the development-only table
+- **`properties` are checked first.** npm's own `npm sbom` puts `scope: required` on
+  development dependencies too, and marks dev through a property instead. Reading `scope`
+  alone would find no distinction at all in an npm SBOM
+- When in doubt, findings fall to **runtime**. Putting a runtime package in the
+  development-only table hides it; the reverse only makes the list longer
+
+### When there are no development-only findings
+
+If the distinction is available but no finding lands in development-only, the report is
+**not split** — a row of empty "Development-only dependencies (0 total)" headings under
+every rank helps no one. The summary carries one line instead.
+
+```
+Total findings: 8
+Development-only findings: 0 (every finding is a runtime dependency)
+```
+
+Note that **a zero runtime count keeps the split**. "Runtime dependencies (0 total)" is
+exactly the thing worth showing, so that table stays.
+
+### When the input cannot distinguish them
+
+If the input carries no such signal at all, findings are listed together as before, and
+the report says so in one line near the top.
+
+> This input carries no information distinguishing runtime from development dependencies,
+> so all findings are listed together.
+
+Both cases yield a single table, but they are **worded differently** — "nothing to tell it
+from" is a note at the top, "told apart, and none were development-only" is a line in the
+summary.
+
+By spec, an absent `scope` means `required` — so reading a silent SBOM literally would
+make every finding look like a runtime dependency. The note keeps **"we can tell" and
+"we have nothing to tell it from"** apart.
+
+**Trivy JSON cannot distinguish them.** Trivy findings
+(`Results[].Vulnerabilities[]`) carry no runtime/development field, and triage-lens does
+not guess. (Trivy also excludes development dependencies from scans by default.)
+
+## Recommended actions
+
+The report ends with a table that **groups findings by package**. One package may appear
+under five CVEs, but the actual work is a single upgrade.
+
+```
+| Package | Installed | Upgrade to | CVEs resolved | Highest priority |
+| lodash | 4.17.15 | 4.17.21 | 2 | P1 (High) |
+| apt | 2.2.4 | No fix available | 0 | P3 (Low) |
+```
+
+- **No AI involved.** The table appears without `--ai`, and `--ai` does not change it
+- **`--top` does not apply.** Findings hidden by the display limit are still aggregated.
+  Dropping them would understate the resolved count and make an upgrade look pointless
+- The same package at **a different installed version gets its own row** (the upgrade
+  target differs). The same version found in several places collapses into one row
+- The upgrade target is the **highest of the fix versions that can be compared reliably**.
+  If versions like `1:1.2.11.dfsg-2+deb11u2` are mixed in, it shows "Unknown" — guessing
+  the ordering could point you at a downgrade
+- **Packages with no determinable target are still listed.** They show "No fix available"
+  or "Unknown" and sort last, so "absent from the table" never reads as "nothing to do"
+
+## What this report cannot tell you
+
+Every report ends with this note:
+
+> These priorities are based on whether an affected version is present in your
+> dependencies. Whether the affected code is actually used, or reachable from outside,
+> is not assessed - the real impact may be smaller or larger than shown here.
+
+triage-lens only looks at **whether an affected version is in your dependency tree**.
+It performs no reachability analysis.
+
 ## How external data is handled
 
 - **KEV catalog**: cached at `~/.cache/triage-lens/kev.json` and not refetched for 24 hours.
@@ -466,7 +596,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.5.0) can and cannot do
+## What this version (v0.6.0) can and cannot do
 
 It can:
 
@@ -475,13 +605,18 @@ It can:
 - Prioritise using EPSS and CISA KEV
 - Produce Markdown reports in Japanese and English
 - Add AI-generated remediation notes (`--ai`, only when an API key is set)
-- **Fail the build on serious findings (`--fail-on`)**
-- **Run inside GitHub Actions as a composite action**
+- Fail the build on serious findings (`--fail-on`)
+- Run inside GitHub Actions as a composite action
+- **Split runtime and development-only dependencies** when the input says which is which
+- **Recommend actions per package** - what to upgrade, how far, and how much it clears
 
 It cannot yet (planned for later phases):
 
 - Read SPDX input
 - Read the XML representation of CycloneDX
+- Read `npm audit --json` or OSV format natively
+- **Perform reachability analysis** (whether the affected code is actually called)
+- Tell runtime from development dependencies in Trivy JSON (that output carries no such field)
 - Show error messages and `--help` in English
 - Produce reports in languages other than Japanese and English
 - Use a config file or a web UI

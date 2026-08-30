@@ -98,15 +98,19 @@ def _merge(kept: Vulnerability, duplicate: Vulnerability) -> Vulnerability:
     """重複した2件から、リスクを過小に見せない1件を作る。"""
     cvss = _higher_score(kept.cvss, duplicate.cvss)
     fixed_version, fixed_version_known = _merge_fixed_version(kept, duplicate)
+    # 片方でも本番依存なら本番依存にする。本番のものを「開発だけ」に寄せると
+    # 見落としになるが、逆は多めに出るだけで見落としにはならない。
+    dev_only = kept.dev_only and duplicate.dev_only
 
-    unchanged = (kept.cvss, kept.fixed_version, kept.fixed_version_known)
-    if (cvss, fixed_version, fixed_version_known) == unchanged:
+    unchanged = (kept.cvss, kept.fixed_version, kept.fixed_version_known, kept.dev_only)
+    if (cvss, fixed_version, fixed_version_known, dev_only) == unchanged:
         return kept
     return replace(
         kept,
         cvss=cvss,
         fixed_version=fixed_version,
         fixed_version_known=fixed_version_known,
+        dev_only=dev_only,
     )
 
 
@@ -150,15 +154,31 @@ def _merge_fixed_version(kept: Vulnerability, duplicate: Vulnerability) -> tuple
 
 def _newer_version(kept: str, duplicate: str) -> str | None:
     """新しい方のバージョン文字列。比較できない形式なら None。"""
-    left = _version_parts(kept)
-    right = _version_parts(duplicate)
-    if left is None or right is None:
+    return newest_version((kept, duplicate))
+
+
+def newest_version(versions: Iterable[str]) -> str | None:
+    """与えられたバージョンのうち最も新しいもの。比較できない形式が混ざれば None。
+
+    「1つでも比較できない形式が混ざったら None」にしているのは、`1:1.2.11.dfsg-2+deb11u2`
+    のような表記を独自に解釈すると、**古い版を「新しい方」として選びかねない**ため。
+    どれが新しいか決められないなら、決めない。
+
+    値が1つだけのときは、その形式が比較できるかに関わらずそのまま返す。
+    比較する相手がいなければ、誤った大小関係を作りようがない。
+    """
+    unique = list(dict.fromkeys(versions))
+    if not unique:
+        return None
+    if len(unique) == 1:
+        return unique[0]
+
+    parsed = [(_version_parts(version), version) for version in unique]
+    if any(parts is None for parts, _ in parsed):
         return None
 
-    width = max(len(left), len(right))
-    left += (0,) * (width - len(left))
-    right += (0,) * (width - len(right))
-    return duplicate if right > left else kept
+    width = max(len(parts) for parts, _ in parsed)
+    return max(parsed, key=lambda item: item[0] + (0,) * (width - len(item[0])))[1]
 
 
 def _version_parts(version: str) -> tuple[int, ...] | None:

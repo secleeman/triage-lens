@@ -1,7 +1,9 @@
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
 
+from triage_lens.i18n import catalog
 from triage_lens.kev import SOURCE_NETWORK, SOURCE_STALE_CACHE, SOURCE_UNAVAILABLE
 from triage_lens.models import Vulnerability
 from triage_lens.report import render_report
@@ -210,3 +212,221 @@ def test_どの表示件数でも最後は改行1つで終わる(top_n):
 
     assert report.endswith("\n")
     assert not report.endswith("\n\n")
+
+
+# --- 本番依存 / 開発依存の区別（Phase 6） -------------------------------------
+
+
+def make_split_items(runtime=2, development=3, cvss=7.5, epss_value=0.05):
+    """本番依存と開発依存が混ざった検出を作る（既定では全件 P2）。"""
+    vulns, epss = [], {}
+    for index in range(runtime):
+        cve = f"CVE-2110-0{index:03d}"
+        vulns.append(make_vuln(cve, cvss=cvss, pkg=f"runtime-{index}"))
+        epss[cve] = epss_value
+    for index in range(development):
+        cve = f"CVE-2111-0{index:03d}"
+        vulns.append(replace(make_vuln(cve, cvss=cvss, pkg=f"dev-{index}"), dev_only=True))
+        epss[cve] = epss_value
+    return prioritize(vulns, epss, set())
+
+
+def test_区別できない入力ではその旨を明記する():
+    report = render(build_items())
+
+    assert "区別する情報が含まれていないため" in report
+    assert "### 本番依存" not in report
+
+
+def test_区別できない入力のサマリは従来の3列のまま():
+    """区別できないのに内訳の列を出すと「本番依存は0件」と読まれてしまう。"""
+    report = render(build_items(count_p0=1, count_p1=0, count_p2=0, count_p3=0))
+
+    assert "| 優先度 | 件数 | 目安 |" in report
+    assert "| P0 (Act now) | 1 | 今すぐ対応 |" in report
+
+
+def test_検出が無ければ区別情報の注記も出さない():
+    report = render([])
+
+    assert "区別する情報が含まれていないため" not in report
+
+
+def test_区別できる入力では2つの表に分かれる():
+    report = render(make_split_items(), scope_known=True)
+
+    assert "### 本番依存（2件）" in report
+    assert "### 開発依存のみ（3件）" in report
+    assert "区別する情報が含まれていないため" not in report
+
+
+def test_区別できる入力のサマリに内訳が出る():
+    report = render(make_split_items(runtime=1, development=4), scope_known=True)
+
+    assert "| 優先度 | 件数 | うち本番依存 | 目安 |" in report
+    assert "| P2 (Medium) | 5 | 1 | 計画的に対応 |" in report
+
+
+def test_該当が無い側も見出しを残す():
+    """「本番依存 0件」であることが、いちばん伝えたい情報になる場面がある。"""
+    report = render(make_split_items(runtime=0, development=2), scope_known=True)
+
+    assert "### 本番依存（0件）" in report
+    assert "### 開発依存のみ（2件）" in report
+
+
+def test_表示件数は表ごとに効く():
+    """ランク全体で数えると、本番依存の検出が開発依存に押し出されて見えなくなる。"""
+    report = render(make_split_items(runtime=4, development=4), scope_known=True, top_n=2)
+
+    assert "### 本番依存（4件中 上位2件を表示）" in report
+    assert "### 開発依存のみ（4件中 上位2件を表示）" in report
+    assert report.count("| CVE-2110-") == 2
+    assert report.count("| CVE-2111-") == 2
+
+
+# --- 推奨アクション（Phase 6） ------------------------------------------------
+
+
+def test_推奨アクションの表が出る():
+    report = render(build_items(count_p0=0, count_p1=0, count_p2=1, count_p3=0))
+
+    assert "## 推奨アクション" in report
+    assert "| パッケージ | 現在 | 上げ先 | 解消されるCVE | 最高優先度 |" in report
+    assert "| libdemo | 1.0.0 | 1.0.1 | 1件 | P2 (Medium) |" in report
+
+
+def test_推奨アクションは優先度の付け方より前に置く():
+    """行動の指示が、判定基準の説明の後ろに埋もれないようにする。"""
+    report = render(build_items())
+
+    assert report.index("## 推奨アクション") < report.index("## 優先度の付け方")
+
+
+def test_推奨アクションは表示件数に左右されない():
+    """表に出ていない検出も同じパッケージのことがあり、切ると解消件数が実際より減る。"""
+    report = render(build_items(count_p0=0, count_p1=0, count_p2=0, count_p3=7), top_n=1)
+
+    assert "| libdemo | 1.0.0 | 1.0.1 | 7件 | P3 (Low) |" in report
+
+
+def test_検出が無ければ推奨アクションの節も出さない():
+    assert "## 推奨アクション" not in render([])
+
+
+def test_区別できる入力では推奨アクションも分かれる():
+    report = render(make_split_items(runtime=1, development=1), scope_known=True)
+
+    section = report[report.index("## 推奨アクション") :]
+    assert "### 本番依存（1件）" in section
+    assert "### 開発依存のみ（1件）" in section
+
+
+# --- 実害判定の限界（Phase 6） ------------------------------------------------
+
+
+def test_限界の注意書きが最終行に出る():
+    report = render(build_items())
+    expected = catalog("ja")("limits_note")
+
+    assert report.rstrip().endswith(expected)
+
+
+def test_検出が無ければ限界の注意書きは出さない():
+    """判定した結果が1件も無いところに判定の限界を書いても伝わらない。"""
+    report = render([])
+
+    assert catalog("ja")("limits_note") not in report
+
+
+def test_上げ先が無い行は解消件数を重ねて書かない():
+    """上げ先の欄に「修正版なし」と出ているので、同じことを2度書かない。"""
+    items = prioritize([make_vuln("CVE-2100-0001", cvss=3.0, fixed=None)], {}, set())
+    report = render(items)
+
+    assert "| libdemo | 1.0.0 | 修正版なし | 0件 | P3 (Low) |" in report
+
+
+def test_上げても残る検出があれば件数を併記する():
+    items = prioritize(
+        [
+            make_vuln("CVE-2100-0001", cvss=3.0, fixed="1.0.1"),
+            make_vuln("CVE-2100-0002", cvss=3.0, fixed=None),
+        ],
+        {},
+        set(),
+    )
+    report = render(items)
+
+    assert "| libdemo | 1.0.0 | 1.0.1 | 1件（ほかに1件は修正版なし） | P3 (Low) |" in report
+
+
+# --- 区別できるが開発依存が0件のとき（Phase 6 の調整） ------------------------
+
+
+def test_開発依存が0件なら分割せず従来形式にする():
+    """空の「開発依存のみ（0件）」がランクの数だけ並ぶだけで、読む人に何も足さない。"""
+    report = render(make_split_items(runtime=3, development=0), scope_known=True)
+
+    assert "### 本番依存" not in report
+    assert "### 開発依存のみ" not in report
+    assert "| 優先度 | 件数 | 目安 |" in report, "サマリが3列に戻っていない"
+
+
+def test_開発依存が0件ならその旨をサマリに明記する():
+    """これが無いと、区別できずに分けなかった場合と見分けが付かない。"""
+    report = render(make_split_items(runtime=3, development=0), scope_known=True)
+
+    assert "開発依存のみの検出: 0件（すべて本番依存です）" in report
+    assert catalog("ja")("note_scope_unknown") not in report
+
+
+def test_区別できない入力とは表示で見分けられる():
+    """同じ「1つの表」でも、0件だったのか材料が無かったのかが読み分けられること。"""
+    known = render(make_split_items(runtime=3, development=0), scope_known=True)
+    unknown = render(make_split_items(runtime=3, development=0), scope_known=False)
+    text = catalog("ja")
+
+    assert text("summary_dev_none") in known
+    assert text("note_scope_unknown") not in known
+
+    assert text("summary_dev_none") not in unknown
+    assert text("note_scope_unknown") in unknown
+
+
+def test_開発依存が0件なら推奨アクションも分割しない():
+    report = render(make_split_items(runtime=2, development=0), scope_known=True)
+    section = report[report.index("## 推奨アクション") :]
+
+    assert "### 本番依存" not in section
+    assert "### 開発依存のみ" not in section
+    assert "| パッケージ | 現在 | 上げ先 | 解消されるCVE | 最高優先度 |" in section
+
+
+def test_開発依存が1件でもあれば分割する():
+    report = render(make_split_items(runtime=3, development=1), scope_known=True)
+
+    assert "### 本番依存（3件）" in report
+    assert "### 開発依存のみ（1件）" in report
+    assert catalog("ja")("summary_dev_none") not in report
+
+
+def test_本番依存が0件のときは分割を続ける():
+    """「本番依存 0件」はいちばん伝えたい情報なので、こちらは表を残す。"""
+    report = render(make_split_items(runtime=0, development=2), scope_known=True)
+
+    assert "### 本番依存（0件）" in report
+    assert "### 開発依存のみ（2件）" in report
+
+
+def test_検出が無ければ0件の行も出さない():
+    report = render([], scope_known=True)
+
+    assert catalog("ja")("summary_dev_none") not in report
+
+
+@pytest.mark.parametrize("lang", ["ja", "en"])
+def test_0件の行は両言語で出る(lang):
+    report = render(make_split_items(runtime=2, development=0), scope_known=True, lang=lang)
+
+    assert catalog(lang)("summary_dev_none") in report

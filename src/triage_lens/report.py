@@ -13,6 +13,8 @@ from .models import (
     EnrichedVulnerability,
     Priority,
 )
+from .recommendations import Recommendation
+from .recommendations import build as build_recommendations
 from .scoring import (
     CVSS_THRESHOLD,
     EPSS_THRESHOLD,
@@ -30,6 +32,12 @@ _FULL_LIST_PRIORITIES = (Priority.P0, Priority.P1)
 
 #: 一覧表の区切り行（列数は `table_header` の文言と揃える）
 _TABLE_DIVIDER = "| " + " | ".join(["---"] * 8) + " |"
+
+#: 推奨アクションの表の区切り行（列数は `recommend_table_header` の文言と揃える）
+_RECOMMEND_DIVIDER = "| " + " | ".join(["---"] * 5) + " |"
+
+#: 本番依存 / 開発依存に分けて出すときの並び順。本番依存を先に出す。
+_GROUPS = (("group_runtime", False), ("group_dev", True))
 
 #: パーサが入れた「読み取れなかった」表記と、その文言キーの対応。
 #: 形式の解釈は言語に依存しないため、表示するときにレポート言語へ差し替える。
@@ -53,10 +61,29 @@ def render_report(
     kev_source: str = "",
     lang: str = DEFAULT_LANG,
     ai: AiAnnotation | None = None,
+    scope_known: bool = False,
 ) -> str:
-    """優先度付きの脆弱性一覧から Markdown レポートを組み立てる。"""
+    """優先度付きの脆弱性一覧から Markdown レポートを組み立てる。
+
+    `scope_known` は、入力が本番依存 / 開発依存を区別できるかどうか。表示は3通りになる。
+
+    | 状態 | 表示 |
+    | --- | --- |
+    | 区別できない | 1つの表。冒頭に「区別情報が無い」と明記する |
+    | 区別できて開発依存が0件 | 1つの表。サマリに「開発依存のみの検出: 0件」と明記する |
+    | 区別できて開発依存がある | 本番依存 / 開発依存のみ の2つの表に分ける |
+
+    上の2つはどちらも1つの表になるが、**「材料が無かった」のか「区別したうえで0件
+    だった」のかは書き分ける**。読む人にとって意味がまったく違うため。
+
+    **区別の有無は優先度には影響しない**（表示の分け方だけが変わる）。
+    """
     text = catalog(lang)
     counts = count_by_priority(items)
+    # 開発依存の検出が1件も無いなら分けない。空の「開発依存のみ（0件）」が
+    # ランクの数だけ並ぶだけで、読む人には何も足さないため。
+    # 代わりにサマリへ「0件」と明記して、区別できなかった場合と見分けられるようにする。
+    split = scope_known and any(item.vuln.dev_only for item in items)
     lines: list[str] = [f"# {text('report_title')}", ""]
     lines += [
         text("meta_target", artifact=_field(text, artifact_name)),
@@ -70,17 +97,24 @@ def render_report(
         lines += [f"> ⚠️ {warning}" for warning in warnings]
         lines.append("")
 
-    lines += _summary_section(text, items, counts)
+    # 区別できないことは異常ではないので、警告の印（⚠️）は付けない。
+    # 検出が無いときは分ける対象そのものが無いため出さない。
+    if items and not scope_known:
+        lines += [f"> {text('note_scope_unknown')}", ""]
+
+    lines += _summary_section(text, items, counts, scope_known=scope_known, split=split)
 
     if not items:
         lines += [text("no_findings"), ""]
     else:
         for priority in Priority:
             limit = None if priority in _FULL_LIST_PRIORITIES else top_n
-            lines += _priority_section(text, items, priority, counts[priority], limit)
+            lines += _priority_section(text, items, priority, counts[priority], limit, split=split)
+        lines += _recommendations_section(text, build_recommendations(items), split=split)
 
     lines += _footer(text)
     lines += _ai_footer(text, ai)
+    lines += _limits_section(text, items)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -96,18 +130,43 @@ def _warnings(text: Catalog, *, epss_complete: bool, kev_source: str) -> list[st
 
 
 def _summary_section(
-    text: Catalog, items: Sequence[EnrichedVulnerability], counts: dict[Priority, int]
+    text: Catalog,
+    items: Sequence[EnrichedVulnerability],
+    counts: dict[Priority, int],
+    *,
+    scope_known: bool,
+    split: bool,
 ) -> list[str]:
     lines = [
         f"## {text('summary_heading')}",
         "",
         text("summary_total", count=len(items)),
-        "",
-        text("summary_table_header"),
-        "| --- | --- | --- |",
     ]
-    for priority in Priority:
-        lines.append(f"| {priority.label} | {counts[priority]} | {_action(text, priority)} |")
+
+    # 「区別したうえで0件だった」ことを書く。これが無いと、区別できずに分けなかった
+    # 場合（冒頭に注記が出る）と見分けが付かない。
+    if items and scope_known and not split:
+        lines.append(text("summary_dev_none"))
+    lines.append("")
+
+    if not split:
+        # 区別できないのに内訳の列を出すと「本番依存は0件」と読まれてしまう。
+        # 開発依存が0件のときも、内訳の列は件数と同じ数が並ぶだけで意味がない。
+        lines += [text("summary_table_header"), "| --- | --- | --- |"]
+        lines += [
+            f"| {priority.label} | {counts[priority]} | {_action(text, priority)} |"
+            for priority in Priority
+        ]
+        lines.append("")
+        return lines
+
+    runtime = count_by_priority(item for item in items if not item.vuln.dev_only)
+    lines += [text("summary_table_header_split"), "| --- | --- | --- | --- |"]
+    lines += [
+        f"| {priority.label} | {counts[priority]} | {runtime[priority]} "
+        f"| {_action(text, priority)} |"
+        for priority in Priority
+    ]
     lines.append("")
     return lines
 
@@ -118,31 +177,62 @@ def _priority_section(
     priority: Priority,
     count: int,
     limit: int | None,
+    *,
+    split: bool,
 ) -> list[str]:
-    shown = [item for item in items if item.priority is priority]
-    if limit is not None:
-        shown = shown[: max(0, limit)]
+    matching = [item for item in items if item.priority is priority]
 
-    if limit is None or count <= len(shown):
-        scope = text("scope_all", count=count)
-    elif not shown:
-        scope = text("scope_omitted", count=count)
-    else:
-        scope = text("scope_top", count=count, shown=len(shown))
-
-    heading = text(
-        "section_heading", label=priority.label, action=_action(text, priority), scope=scope
-    )
-    lines = [f"## {heading}", ""]
-    if not shown:
-        lines += [text("section_none") if count == 0 else text("section_hidden"), ""]
+    if not split:
+        shown = _limited(matching, limit)
+        lines = [f"## {_heading(text, priority, _scope(text, count, len(shown), limit))}", ""]
+        lines += _table(text, shown, count)
+        lines += _ai_comment_lines(text, shown)
         return lines
 
-    lines += [text("table_header"), _TABLE_DIVIDER]
-    lines += [_row(text, item) for item in shown]
-    lines.append("")
-    lines += _ai_comment_lines(text, shown)
+    # 分けるときは、ランクの見出しには総数だけを出し、省略の有無は表ごとに書く。
+    lines = [f"## {_heading(text, priority, text('scope_all', count=count))}", ""]
+    shown_all: list[EnrichedVulnerability] = []
+    for label_key, dev_only in _GROUPS:
+        group = [item for item in matching if bool(item.vuln.dev_only) is dev_only]
+        # 表示件数の指定は表ごとに効かせる。ランク全体で数えると、本番依存の検出が
+        # 開発依存に押し出されて見えなくなることがあるため。
+        shown = _limited(group, limit)
+        shown_all += shown
+        scope = _scope(text, len(group), len(shown), limit)
+        lines += [f"### {text('group_heading', label=text(label_key), scope=scope)}", ""]
+        lines += _table(text, shown, len(group))
+    # AIコメントは表ごとではなくランクごとに1箇所へまとめる（見出しの階層を深くしないため）
+    lines += _ai_comment_lines(text, shown_all)
     return lines
+
+
+def _limited(
+    items: Sequence[EnrichedVulnerability], limit: int | None
+) -> list[EnrichedVulnerability]:
+    if limit is None:
+        return list(items)
+    return list(items[: max(0, limit)])
+
+
+def _scope(text: Catalog, count: int, shown: int, limit: int | None) -> str:
+    """「17件」「17件中 上位5件を表示」のような、件数と省略の有無を表す語。"""
+    if limit is None or count <= shown:
+        return text("scope_all", count=count)
+    if shown == 0:
+        return text("scope_omitted", count=count)
+    return text("scope_top", count=count, shown=shown)
+
+
+def _heading(text: Catalog, priority: Priority, scope: str) -> str:
+    return text(
+        "section_heading", label=priority.label, action=_action(text, priority), scope=scope
+    )
+
+
+def _table(text: Catalog, shown: Sequence[EnrichedVulnerability], count: int) -> list[str]:
+    if not shown:
+        return [text("section_none") if count == 0 else text("section_hidden"), ""]
+    return [text("table_header"), _TABLE_DIVIDER, *[_row(text, item) for item in shown], ""]
 
 
 def _ai_comment_lines(text: Catalog, shown: Sequence[EnrichedVulnerability]) -> list[str]:
@@ -166,6 +256,75 @@ def _ai_comment_lines(text: Catalog, shown: Sequence[EnrichedVulnerability]) -> 
             rendered.append(line)
 
     return [f"### {text('ai_section_heading')}", "", *rendered, ""]
+
+
+def _recommendations_section(
+    text: Catalog, recommendations: Sequence[Recommendation], *, split: bool
+) -> list[str]:
+    """パッケージ単位の推奨アクション。
+
+    「優先度の付け方」より前に置く。あちらは判定基準の説明であって付録にあたるので、
+    行動の指示をその後ろに置くと埋もれる。
+    """
+    if not recommendations:
+        return []
+
+    lines = [f"## {text('recommend_heading')}", "", text("recommend_note"), ""]
+
+    if not split:
+        return lines + _recommend_table(text, recommendations)
+
+    for label_key, dev_only in _GROUPS:
+        group = [item for item in recommendations if bool(item.dev_only) is dev_only]
+        scope = text("scope_all", count=len(group))
+        lines += [f"### {text('group_heading', label=text(label_key), scope=scope)}", ""]
+        lines += _recommend_table(text, group) if group else [text("section_none"), ""]
+    return lines
+
+
+def _recommend_table(text: Catalog, recommendations: Sequence[Recommendation]) -> list[str]:
+    rows = [_recommend_row(text, item) for item in recommendations]
+    return [text("recommend_table_header"), _RECOMMEND_DIVIDER, *rows, ""]
+
+
+def _recommend_row(text: Catalog, recommendation: Recommendation) -> str:
+    cells = [
+        _field(text, recommendation.pkg_name),
+        _field(text, recommendation.installed_version),
+        _upgrade_target(text, recommendation),
+        _resolved_count(text, recommendation),
+        recommendation.priority.label,
+    ]
+    return "| " + " | ".join(cells) + " |"
+
+
+def _upgrade_target(text: Catalog, recommendation: Recommendation) -> str:
+    """上げ先の表記。「修正版が無い」と「どこまで上げればよいか分からない」を混同しない。"""
+    if recommendation.fixed_version is not None:
+        return _escape(recommendation.fixed_version)
+    return text("no_fix_available") if recommendation.fixed_version_known else text("unknown")
+
+
+def _resolved_count(text: Catalog, recommendation: Recommendation) -> str:
+    """解消される件数。上げても残る検出があれば、同じセルに件数を併記する。
+
+    1件も解消できないときは併記しない。そのときは上げ先の欄が「修正版なし」「不明」に
+    なっており、同じことを2度書くことになるため。
+    """
+    if recommendation.unresolved == 0 or recommendation.resolved == 0:
+        return text("recommend_resolved", count=recommendation.resolved)
+
+    kinds = []
+    if recommendation.unresolved_has_no_fix:
+        kinds.append(text("no_fix_available"))
+    if recommendation.unresolved_has_unknown:
+        kinds.append(text("unknown"))
+    return text(
+        "recommend_resolved_rest",
+        count=recommendation.resolved,
+        rest=recommendation.unresolved,
+        kind=text("recommend_kind_separator").join(kinds),
+    )
 
 
 def _action(text: Catalog, priority: Priority) -> str:
@@ -240,6 +399,17 @@ def _ai_footer(text: Catalog, ai: AiAnnotation | None) -> list[str]:
         lines.append(text("ai_limit_note", count=ai.target_count))
     lines.append("")
     return lines
+
+
+def _limits_section(text: Catalog, items: Sequence[EnrichedVulnerability]) -> list[str]:
+    """このレポートで分かることの限界。最後に読ませたいので最終行に置く。
+
+    検出が無いときは出さない。判定した結果が1件も無いところに判定の限界を書いても、
+    何のことか伝わらないため。
+    """
+    if not items:
+        return []
+    return [text("limits_note"), ""]
 
 
 def _field(text: Catalog, value: str) -> str:

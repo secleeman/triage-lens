@@ -158,6 +158,7 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         kev_source=kev_source,
         lang=args.lang,
         ai=ai_annotation,
+        scope_known=scan.scope_known,
     )
     _write_output(report, args.output)
 

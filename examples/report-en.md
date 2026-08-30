@@ -1,8 +1,10 @@
 # Vulnerability Triage Report
 
 - Target: sample-app:1.4.0
-- Generated: 2026-08-29 23:04
+- Generated: 2026-08-30 09:40
 - Criteria: listed in CISA KEV / EPSS >= 0.1 / CVSS >= 7.0
+
+> This input carries no information distinguishing runtime from development dependencies, so all findings are listed together.
 
 ## Summary
 
@@ -49,6 +51,25 @@ Total findings: 14
 | CVE-2011-3374 | apt | sample-app:1.4.0 (debian 11.9) | 2.2.4 -> No fix available | 3.7 | 0.012 | No | Does not meet the high-risk criteria: exploitation probability is low, severity is medium or lower (EPSS 0.012 / CVSS 3.7) |
 | CVE-2023-45803 | urllib3 | app/requirements.txt | 1.26.4 -> 1.26.18 | 4.2 | 0.005 | No | Does not meet the high-risk criteria: exploitation probability is low, severity is medium or lower (EPSS 0.005 / CVSS 4.2) |
 
+## Recommended actions
+
+Findings grouped by package. This table covers every finding, regardless of the display limit (--top).
+
+| Package | Installed | Upgrade to | CVEs resolved | Highest priority |
+| --- | --- | --- | --- | --- |
+| libwebp6 | 0.6.1-2.1 | 0.6.1-2.1+deb11u1 | 1 | P0 (Act now) |
+| org.apache.logging.log4j:log4j-core | 2.14.1 | 2.15.0 | 1 | P0 (Act now) |
+| org.springframework:spring-beans | 5.3.13 | 5.3.18 | 1 | P0 (Act now) |
+| curl | 7.74.0-1.3 | 7.74.0-1.3+deb11u10 | 1 | P1 (High) |
+| nginx | 1.18.0-6.1 | 1.18.0-6.1+deb11u2 | 1 | P1 (High) |
+| zlib1g | 1:1.2.11.dfsg-2 | 1:1.2.11.dfsg-2+deb11u2 | 1 | P1 (High) |
+| urllib3 | 1.26.4 | 1.26.18 | 2 | P2 (Medium) |
+| PyYAML | 5.3.1 | 5.4 | 1 | P2 (Medium) |
+| jquery | 3.3.1 | 3.4.0 | 1 | P2 (Medium) |
+| lodash | 4.17.15 | 4.17.20 | 1 | P2 (Medium) |
+| setuptools | 65.3.0 | 65.5.1 | 1 | P3 (Low) |
+| apt | 2.2.4 | No fix available | 0 | P3 (Low) |
+
 ## How priorities are assigned
 
 | Priority | Condition |
@@ -61,3 +82,5 @@ Total findings: 14
 Within a rank, findings are sorted by EPSS descending, then CVSS descending.
 
 Sources: CISA KEV catalog / FIRST.org EPSS / CVSS as reported by the scanner.
+
+These priorities are based on whether an affected version is present in your dependencies. Whether the affected code is actually used, or reachable from outside, is not assessed - the real impact may be smaller or larger than shown here.
