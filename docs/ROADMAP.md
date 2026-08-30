@@ -2,7 +2,7 @@
 
 triage-lens の現状と、今後予定している改善をまとめます。
 
-## v0.7.0 でできること
+## v0.7.1 でできること
 
 - Trivy の `--format json` 出力の読み込み
 - CycloneDX（JSON）の SBOM の読み込み（形式は中身から自動判別。指定は不要）
@@ -14,6 +14,15 @@ triage-lens の現状と、今後予定している改善をまとめます。
 - GitHub Actions への組み込み（`uses: secleeman/triage-lens@vX.Y.Z`）
 - **本番依存と開発依存を分けた表示**（入力にその情報がある場合）
 - **パッケージ単位の推奨アクション**（どれをどこまで上げれば何件片付くか）
+
+### v0.7.1 で直したもの
+
+**ツールの動きは v0.7.0 から変えていません。** 保守のみの版です。
+
+| 項目 | 内容 |
+| --- | --- |
+| GitHub Actions の版上げ | ワークフローが使う公式 action を Node.js 24 で動く現行版に上げました（`checkout` v7 / `setup-python` v7 / `upload-artifact` v7 / `download-artifact` v8）。GitHub 側が Node.js 20 の面倒を見るのをやめても、CI とリリースが止まりません |
+| README の利用例 | 利用者がそのまま写して使うため、例に載せている action の版も合わせて上げました |
 
 ### v0.7.0 で追加したもの
 

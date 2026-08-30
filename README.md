@@ -243,7 +243,7 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: スキャンする
         uses: aquasecurity/trivy-action@v0.36.0
@@ -253,14 +253,14 @@ jobs:
           output: trivy.json
 
       - name: トリアージレポートを作る
-        uses: secleeman/triage-lens@v0.7.0
+        uses: secleeman/triage-lens@v0.7.1
         with:
           scan-file: trivy.json
           fail-on: p1
 
       - name: レポートを残す
         if: always()          # fail-on で落ちてもレポートは残す
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: triage-report
           path: triage-report.md
@@ -292,7 +292,7 @@ jobs:
 
 ```yaml
       - name: トリアージレポートを作る
-        uses: secleeman/triage-lens@v0.7.0
+        uses: secleeman/triage-lens@v0.7.1
         with:
           scan-file: trivy.json
           ai: 'true'
@@ -651,7 +651,7 @@ triage-lens は**依存関係にその版があるかどうか**しか見てい�
 GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 で
 テストと lint が実行されます。
 
-## この版（v0.7.0）でできること・できないこと
+## この版（v0.7.1）でできること・できないこと
 
 できること:
 

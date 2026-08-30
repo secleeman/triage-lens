@@ -242,7 +242,7 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Scan
         uses: aquasecurity/trivy-action@v0.36.0
@@ -252,7 +252,7 @@ jobs:
           output: trivy.json
 
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.7.0
+        uses: secleeman/triage-lens@v0.7.1
         with:
           scan-file: trivy.json
           lang: en
@@ -260,7 +260,7 @@ jobs:
 
       - name: Keep the report
         if: always()          # keep it even when fail-on fails the job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: triage-report
           path: triage-report.md
@@ -293,7 +293,7 @@ The only output is `report-path`, the path of the generated report.
 
 ```yaml
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.7.0
+        uses: secleeman/triage-lens@v0.7.1
         with:
           scan-file: trivy.json
           ai: 'true'
@@ -643,7 +643,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.7.0) can and cannot do
+## What this version (v0.7.1) can and cannot do
 
 It can:
 
