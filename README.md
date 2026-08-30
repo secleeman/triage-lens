@@ -6,15 +6,8 @@
 
 *English: [README.en.md](https://github.com/secleeman/triage-lens/blob/main/README.en.md)*
 
-判定に使う情報:
-
-| データ | 何が分かるか | 出典 |
-| --- | --- | --- |
-| CISA KEV | 実際に悪用が確認されているか | CISA 公開カタログ |
-| EPSS | 今後30日以内に悪用される確率（0〜1） | FIRST.org 公開API |
-| CVSS | 深刻度スコア（0〜10） | スキャナ出力に含まれる値 |
-
-いずれも認証キーは不要です。
+優先順位は CISA KEV / EPSS / CVSS から機械的に決めます。いずれも認証キーは不要で、
+設定なしで動きます（詳しくは [データソース](#データソース)）。
 
 任意で `--ai` を付けると、各CVEに「で、何をすればいいのか」を1〜2行で
 書いた対応方針コメントを添えられます（Claude API を使うため、こちらは
@@ -29,49 +22,9 @@
 - [本番依存 / 開発依存に分かれたレポート](https://github.com/secleeman/triage-lens/blob/main/examples/report-npm-ja.md)（npm の SBOM を入力にした場合）
 - [もとにしたスキャン結果と補足](https://github.com/secleeman/triage-lens/blob/main/examples/README.md)
 
-## 必要なもの
-
-- Python 3.11 以上
-- スキャン結果の JSON ファイル（対応形式は次のとおり）
-
-### 対応している入力形式
-
-| 形式 | 作り方 | 備考 |
-| --- | --- | --- |
-| Trivy の JSON | `trivy image --format json -o result.json <対象>` | Phase 1 から対応 |
-| CycloneDX（JSON） | `trivy image --format cyclonedx -o sbom.cdx.json <対象>` | 仕様 1.4 以降。他のツールが出力した SBOM も読めます |
-| SPDX（JSON） | `trivy image --format spdx-json -o sbom.spdx.json <対象>` | SPDX 2.2 / 2.3。**下記のとおり、多くの場合は検出0件になります** |
-
-**形式は中身を見て自動で判別します。** オプションでの指定は不要です。
-
-CycloneDX は SBOM（部品表）の形式なので、脆弱性の一覧（`vulnerabilities`）を
-含まないファイルもあります。その場合は「検出0件」のレポートになります
-（triage-lens 自身は脆弱性を検出しません）。
-
-#### SPDX を渡したときに気をつけること
-
-**SPDX 2.x には脆弱性の一覧を書く場所がほとんどありません。** CVE を書けるのは
-`packages[].externalRefs[]` のうち `referenceCategory` が `SECURITY` のものだけで
-（しかも `advisory` などの参照が使えるのは 2.3 から）、実際に出回る SPDX の多くは
-ここに何も持っていません。そのため **SPDX を渡すと、たいていは「検出0件」になります。**
-
-これは「脆弱性が無い」という意味ではありません。判定する材料が入っていない、という意味です。
-その場合、triage-lens はレポートの冒頭と標準エラーにその旨を出します。
-
-逆に SECURITY 参照がある場合も、**その参照は「影響を受ける」と断言しているとは限りません**
-（仕様上、影響が無いことを示す勧告も同じ形で書けます）。SPDX からの検出は
-多めに出ることがあります。
-
-脆弱性まで見たいときは、SBOM をスキャンし直した出力を渡してください。
-
-```bash
-trivy sbom sbom.spdx.json --format json -o result.json
-triage-lens report result.json
-```
-
-SPDX 3.x、tag-value / RDF / YAML 表現、CycloneDX の XML 表現には対応していません。
-
 ## インストール
+
+Python 3.11 以上が必要です。
 
 ```bash
 pip install triage-lens
@@ -116,6 +69,60 @@ Windows（PowerShell）の場合は最後の行を次に置き換えてくださ
 ```bash
 .venv\Scripts\pip install .
 ```
+
+## 最小の使い方
+
+スキャン結果の JSON を作り、それを triage-lens に渡すだけです。
+
+```bash
+trivy image --format json -o trivy-result.json sample-app:1.4.0
+triage-lens report trivy-result.json -o triage-report.md
+```
+
+`-o` を省略すると標準出力に表示します。英語のレポートが欲しい場合は `--lang en` を
+付けます。CycloneDX / SPDX を渡すときもコマンドは同じです（形式は自動判別されます）。
+
+Windows での入力ファイルの作り方、オプションの一覧、`--fail-on` で CI を止める方法は
+[使い方](#使い方)に書いています。
+
+## 対応している入力形式
+
+triage-lens に渡すのは、スキャナが出力した JSON ファイルです。
+
+| 形式 | 作り方 | 備考 |
+| --- | --- | --- |
+| Trivy の JSON | `trivy image --format json -o result.json <対象>` | `image` / `fs` / `sbom` のどのサブコマンドの出力でも同じ形式です |
+| CycloneDX（JSON） | `trivy image --format cyclonedx -o sbom.cdx.json <対象>` | 仕様 1.4 以降。他のツールが出力した SBOM も読めます |
+| SPDX（JSON） | `trivy image --format spdx-json -o sbom.spdx.json <対象>` | SPDX 2.2 / 2.3。**下記のとおり、多くの場合は検出0件になります** |
+
+**形式は中身を見て自動で判別します。** オプションでの指定は不要です。
+
+CycloneDX は SBOM（部品表）の形式なので、脆弱性の一覧（`vulnerabilities`）を
+含まないファイルもあります。その場合は「検出0件」のレポートになります
+（triage-lens 自身は脆弱性を検出しません）。
+
+### SPDX を渡したときに気をつけること
+
+**SPDX 2.x には脆弱性の一覧を書く場所がほとんどありません。** CVE を書けるのは
+`packages[].externalRefs[]` のうち `referenceCategory` が `SECURITY` のものだけで
+（しかも `advisory` などの参照が使えるのは 2.3 から）、実際に出回る SPDX の多くは
+ここに何も持っていません。そのため **SPDX を渡すと、たいていは「検出0件」になります。**
+
+これは「脆弱性が無い」という意味ではありません。判定する材料が入っていない、という意味です。
+その場合、triage-lens はレポートの冒頭と標準エラーにその旨を出します。
+
+逆に SECURITY 参照がある場合も、**その参照は「影響を受ける」と断言しているとは限りません**
+（仕様上、影響が無いことを示す勧告も同じ形で書けます）。SPDX からの検出は
+多めに出ることがあります。
+
+脆弱性まで見たいときは、SBOM をスキャンし直した出力を渡してください。
+
+```bash
+trivy sbom sbom.spdx.json --format json -o result.json
+triage-lens report result.json
+```
+
+SPDX 3.x、tag-value / RDF / YAML 表現、CycloneDX の XML 表現には対応していません。
 
 ## 使い方
 
@@ -618,6 +625,18 @@ triage-lens は仕様どおり `optional` を本番依存として扱うため�
 triage-lens は**依存関係にその版があるかどうか**しか見ていません。
 到達性の解析（その脆弱なコードが実際に呼ばれるか）は行いません。
 
+## データソース
+
+優先順位の判定に使う情報です。
+
+| データ | 何が分かるか | 出典 |
+| --- | --- | --- |
+| CISA KEV | 実際に悪用が確認されているか | CISA 公開カタログ |
+| EPSS | 今後30日以内に悪用される確率（0〜1） | FIRST.org 公開API |
+| CVSS | 深刻度スコア（0〜10） | スキャナ出力に含まれる値 |
+
+いずれも認証キーは不要です。
+
 ## 外部データの扱い
 
 - **KEV カタログ**: `~/.cache/triage-lens/kev.json` に保存し、24時間は再取得しません。
@@ -666,7 +685,7 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 - **本番依存 / 開発依存を分けた表示**（入力にその情報がある場合）
 - **パッケージ単位の推奨アクション**（どれをどこまで上げれば何件片付くか）
 
-まだできないこと（今後のフェーズ）:
+まだできないこと:
 
 - SPDX 3.x / tag-value / RDF / YAML 表現の入力
 - CycloneDX の XML 表現

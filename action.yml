@@ -16,7 +16,7 @@ branding:
 
 inputs:
   scan-file:
-    description: 'Path to the scanner output JSON (Trivy JSON or CycloneDX JSON; the format is detected automatically)'
+    description: 'Path to the scanner output JSON (Trivy JSON, CycloneDX JSON or SPDX JSON; the format is detected automatically)'
     required: true
   lang:
     description: 'Report language: ja or en'

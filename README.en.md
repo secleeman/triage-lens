@@ -6,15 +6,8 @@ Install with a single line: `pip install triage-lens`.
 
 *日本語: [README.md](https://github.com/secleeman/triage-lens/blob/main/README.md)*
 
-What the priority is based on:
-
-| Data | What it tells you | Source |
-| --- | --- | --- |
-| CISA KEV | Whether exploitation has actually been observed | CISA public catalog |
-| EPSS | Probability of exploitation in the next 30 days (0–1) | FIRST.org public API |
-| CVSS | Severity score (0–10) | Value reported by the scanner |
-
-None of these require an API key.
+Priorities are decided mechanically from CISA KEV, EPSS and CVSS. None of these
+require an API key, so there is nothing to configure (see [Data sources](#data-sources)).
 
 Optionally, `--ai` adds a one- or two-line note to each finding saying what to
 actually do about it. That part uses the Claude API, so it needs your own API key
@@ -29,50 +22,9 @@ You can read a **report that triage-lens actually produced** before installing a
 - [A report split by runtime / development dependencies](https://github.com/secleeman/triage-lens/blob/main/examples/report-npm-en.md) (from an npm SBOM)
 - [The scan result it was made from, and notes](https://github.com/secleeman/triage-lens/blob/main/examples/README.md)
 
-## Requirements
-
-- Python 3.11 or later
-- A scan result in JSON (see the supported formats below)
-
-### Supported input formats
-
-| Format | How to produce it | Notes |
-| --- | --- | --- |
-| Trivy JSON | `trivy image --format json -o result.json <target>` | Supported since Phase 1 |
-| CycloneDX (JSON) | `trivy image --format cyclonedx -o sbom.cdx.json <target>` | Spec 1.4 or later. SBOMs from other tools work too |
-| SPDX (JSON) | `trivy image --format spdx-json -o sbom.spdx.json <target>` | SPDX 2.2 / 2.3. **Usually yields zero findings — see below** |
-
-**The format is detected from the file contents.** There is no flag to specify it.
-
-CycloneDX is an SBOM format, so a file may contain no vulnerability list
-(`vulnerabilities`). In that case you get a report with zero findings —
-triage-lens does not detect vulnerabilities itself.
-
-#### What to know before passing SPDX
-
-**SPDX 2.x has almost nowhere to record vulnerabilities.** A CVE can only appear in
-`packages[].externalRefs[]` entries whose `referenceCategory` is `SECURITY` (and the
-`advisory` reference type only exists from 2.3 onwards). Most SPDX files in the wild
-carry nothing there, so **passing SPDX usually produces zero findings.**
-
-That does not mean there are no vulnerabilities — it means the input carries nothing to
-judge. When this happens, triage-lens says so at the top of the report and on stderr.
-
-When SECURITY references *are* present, note that such a reference does not necessarily
-assert that the package is affected — the spec allows the same form to point at an
-advisory saying it is not. Findings from SPDX may therefore over-report.
-
-To get findings, rescan the SBOM and pass that output instead:
-
-```bash
-trivy sbom sbom.spdx.json --format json -o result.json
-triage-lens report result.json
-```
-
-SPDX 3.x, the tag-value / RDF / YAML representations, and the XML representation of
-CycloneDX are not supported.
-
 ## Installation
+
+Python 3.11 or later is required.
 
 ```bash
 pip install triage-lens
@@ -117,6 +69,62 @@ On Windows (PowerShell), replace the last line with:
 ```bash
 .venv\Scripts\pip install .
 ```
+
+## Smallest useful run
+
+Produce a scan result in JSON, then hand it to triage-lens.
+
+```bash
+trivy image --format json -o trivy-result.json sample-app:1.4.0
+triage-lens report trivy-result.json --lang en -o triage-report.md
+```
+
+`--lang en` is needed because reports are written in Japanese by default. Without `-o`
+the report goes to stdout. The command is the same for CycloneDX and SPDX - the format
+is detected from the contents.
+
+Producing the input on Windows, the full option list, and stopping CI with `--fail-on`
+are covered under [Usage](#usage).
+
+## Supported input formats
+
+What you pass to triage-lens is a JSON file written by a scanner.
+
+| Format | How to produce it | Notes |
+| --- | --- | --- |
+| Trivy JSON | `trivy image --format json -o result.json <target>` | The `image`, `fs` and `sbom` subcommands all produce this same format |
+| CycloneDX (JSON) | `trivy image --format cyclonedx -o sbom.cdx.json <target>` | Spec 1.4 or later. SBOMs from other tools work too |
+| SPDX (JSON) | `trivy image --format spdx-json -o sbom.spdx.json <target>` | SPDX 2.2 / 2.3. **Usually yields zero findings — see below** |
+
+**The format is detected from the file contents.** There is no flag to specify it.
+
+CycloneDX is an SBOM format, so a file may contain no vulnerability list
+(`vulnerabilities`). In that case you get a report with zero findings —
+triage-lens does not detect vulnerabilities itself.
+
+### What to know before passing SPDX
+
+**SPDX 2.x has almost nowhere to record vulnerabilities.** A CVE can only appear in
+`packages[].externalRefs[]` entries whose `referenceCategory` is `SECURITY` (and the
+`advisory` reference type only exists from 2.3 onwards). Most SPDX files in the wild
+carry nothing there, so **passing SPDX usually produces zero findings.**
+
+That does not mean there are no vulnerabilities — it means the input carries nothing to
+judge. When this happens, triage-lens says so at the top of the report and on stderr.
+
+When SECURITY references *are* present, note that such a reference does not necessarily
+assert that the package is affected — the spec allows the same form to point at an
+advisory saying it is not. Findings from SPDX may therefore over-report.
+
+To get findings, rescan the SBOM and pass that output instead:
+
+```bash
+trivy sbom sbom.spdx.json --format json -o result.json
+triage-lens report result.json
+```
+
+SPDX 3.x, the tag-value / RDF / YAML representations, and the XML representation of
+CycloneDX are not supported.
 
 ## Usage
 
@@ -611,6 +619,18 @@ Every report ends with this note:
 triage-lens only looks at **whether an affected version is in your dependency tree**.
 It performs no reachability analysis.
 
+## Data sources
+
+What the priority is based on.
+
+| Data | What it tells you | Source |
+| --- | --- | --- |
+| CISA KEV | Whether exploitation has actually been observed | CISA public catalog |
+| EPSS | Probability of exploitation in the next 30 days (0–1) | FIRST.org public API |
+| CVSS | Severity score (0–10) | Value reported by the scanner |
+
+None of these require an API key.
+
 ## How external data is handled
 
 - **KEV catalog**: cached at `~/.cache/triage-lens/kev.json` and not refetched for 24 hours.
@@ -658,7 +678,7 @@ It can:
 - **Split runtime and development-only dependencies** when the input says which is which
 - **Recommend actions per package** - what to upgrade, how far, and how much it clears
 
-It cannot yet (planned for later phases):
+It cannot yet:
 
 - Read SPDX 3.x, or the tag-value / RDF / YAML representations
 - Read the XML representation of CycloneDX
