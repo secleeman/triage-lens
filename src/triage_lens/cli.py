@@ -51,6 +51,15 @@ _SBOM_ONLY_WARNING = (
 )
 
 
+#: スキャナが対象を1つも認識しなかったときに標準エラーへ出す1行。
+#: CI では本文を誰も読まないため、0件で緑になったことに気づけるようにする。
+_NO_TARGETS_WARNING = (
+    "注意: スキャナはこの対象から判定できる構成要素を1つも見つけていません。"
+    "「検出0件」は安全という意味ではありません。"
+    "スキャン対象やスキャナの設定を見直してください。"
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="triage-lens",
@@ -69,7 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
         "input",
         help=(
             "スキャナ出力のJSONファイル"
-            "（Trivy の --format json / CycloneDX / SPDX。形式は自動判別）"
+            "（Trivy の --format json / CycloneDX / SPDX。形式は自動判別）。"
+            "`-` を指定すると標準入力から読む"
         ),
     )
     report_parser.add_argument(
@@ -161,6 +171,8 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         # レポート本文にも同じことを書くが、CI では本文を誰も読まない。
         # 0件で緑になったことに気づけないと、静かな見落としになる。
         _write_error(_SBOM_ONLY_WARNING)
+    elif scan.no_targets:
+        _write_error(_NO_TARGETS_WARNING)
     items, epss_complete, kev_source = enrich(scan, client=client, lang=args.lang)
 
     ai_annotation: AiAnnotation | None = None
@@ -179,6 +191,7 @@ def run_report(args: argparse.Namespace, *, client: httpx.Client | None = None) 
         scope_known=scan.scope_known,
         dev_property_used=scan.dev_property_used,
         sbom_only=scan.sbom_only,
+        no_targets=scan.no_targets,
     )
     _write_output(report, args.output)
 

@@ -2,7 +2,7 @@
 
 triage-lens の現状と、今後予定している改善をまとめます。
 
-## v0.7.1 でできること
+## v0.8.0 でできること
 
 - Trivy の `--format json` 出力の読み込み
 - CycloneDX（JSON）の SBOM の読み込み（形式は中身から自動判別。指定は不要）
@@ -12,8 +12,27 @@ triage-lens の現状と、今後予定している改善をまとめます。
 - AI による対応方針コメント（`--ai`。APIキーを設定した場合のみ動作します）
 - 深刻な検出があったときに CI を止めること（`--fail-on`）
 - GitHub Actions への組み込み（`uses: secleeman/triage-lens@vX.Y.Z`）
+- **Trivy のプラグインとしての利用**（`trivy triage-lens <対象>` / `trivy image ... --output plugin=triage-lens`）
+- **標準入力からの読み込み**（`report -`。スキャン結果をパイプで直接渡せます）
 - **本番依存と開発依存を分けた表示**（入力にその情報がある場合）
 - **パッケージ単位の推奨アクション**（どれをどこまで上げれば何件片付くか）
+
+### v0.8.0 で追加・修正したもの
+
+**優先順位の付け方（P0〜P3）は変えていません。** 判定に使うデータも変わっていません。
+
+| 項目 | 内容 |
+| --- | --- |
+| 標準入力からの読み込み | 入力に `-` を指定すると標準入力から読みます。`trivy image --format json <対象> \| triage-lens report -` のように、中間ファイルを作らずに渡せます。成功時も失敗時も標準入力を最後まで読み切ってから終了します（読み残すと呼び出し元が待ち続けるため） |
+| Trivy のプラグイン化 | `trivy plugin install github.com/secleeman/triage-lens@vX.Y.Z` で入れて、`trivy triage-lens <対象>` の1コマンドで使えます。Trivy の出力モード（`trivy image --format json --output plugin=triage-lens`）にも対応しています。実行ファイルは PATH 上の `triage-lens` を呼ぶ薄いラッパーで、OS 別のバイナリは配布しません |
+| **検出0件の Trivy 出力を読めなかったのを修正** | Trivy は検出0件のとき `Results` をキーごと出力しません（`Report` 構造体の `json:",omitempty"`）。これを「Trivy の出力ではない」と判定して**入力エラーにしていました**。判定を Trivy 固有のトップレベルキーの数に変えて読めるようにしました |
+| 「0件＝安全」と読ませない注記 | 上の修正に伴い、スキャナが判定対象を1つも認識しなかった場合はレポートと標準エラーにその旨を出します。対象を認識したうえで検出0件だった場合は出しません（意味が違うため） |
+
+**プラグインの制限**（README にも記載しています）:
+
+- **Windows では動きません。** 実行ファイルがシェバンで起動される Python スクリプトのためです
+- **出力モードでは終了コードが Trivy 側で丸められます。** プラグインが 2 で終了しても Trivy は 1 を返すため、`--fail-on` の 1 と入力エラーの 2 を区別できません。1コマンドの形（`trivy triage-lens <対象>`）では保たれます。終了コードを使い分けたい場合はパイプの形を使ってください
+- プラグインは PATH 上の `triage-lens` を呼ぶため、**本体を別に入れておく必要があります**（`pip install triage-lens`）
 
 ### v0.7.1 で直したもの
 
@@ -110,8 +129,8 @@ PyPI のページ本文は配布物に焼き付けられるため、v0.4.0 の�
 
 ### 入力形式を増やす
 
-CycloneDX には対応しましたが、SPDX 形式はまだ読めません。
-CycloneDX の XML 表現も未対応です（対応しているのは JSON のみ）。
+Trivy JSON / CycloneDX / SPDX（いずれも JSON）に対応しています。
+CycloneDX と SPDX の XML / tag-value / RDF / YAML 表現は未対応です。
 
 `npm audit --json` と OSV 形式のネイティブ入力は、Phase 6 で実現性を調べました
 （`docs/requirements-p6.md` の 6.）。要点は次のとおりです。

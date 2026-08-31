@@ -140,3 +140,73 @@ def test_テキストでないファイルは入力エラーになる(tmp_path):
 
     with pytest.raises(InputError, match="UTF-8 のテキストとして読み込めませんでした"):
         load_scan(binary)
+
+
+# --------------------------------------------------------------------------
+# Trivy が Results をキーごと省く場合
+#
+# Report 構造体の Results には `json:",omitempty"` が付いているため、
+# 検出0件のとき Trivy は Results を出力しない。`Results` の有無だけで
+# 形式を判定すると、正当な出力を「Trivy の出力ではない」と拒否してしまう。
+# --------------------------------------------------------------------------
+
+
+def test_Resultsが無いTrivy出力を読める(fixtures_dir):
+    """実物の `trivy fs --format json` 出力（検出0件）を読めること。"""
+    scan = load_scan(fixtures_dir / "trivy_no_results.json")
+
+    assert scan.artifact_name == "."
+    assert scan.vulnerabilities == []
+
+
+def test_Resultsが無ければ対象を認識できていないと分かる(fixtures_dir):
+    """0件を「安全」と読ませないための材料を立てる。"""
+    scan = load_scan(fixtures_dir / "trivy_no_results.json")
+
+    assert scan.no_targets is True
+
+
+def test_Resultsが空でも対象を認識できていないと分かる(fixtures_dir):
+    """キーが無い場合と空の場合で意味は同じ。扱いも揃える。"""
+    scan = load_scan(fixtures_dir / "trivy_empty.json")
+
+    assert scan.no_targets is True
+
+
+def test_対象を認識したうえで0件ならno_targetsにしない():
+    """スキャン対象は見つかっていて脆弱性が無いのは、素直に良い結果。
+
+    ここで注記を出すと、本当に見直すべき入力の注記が埋もれる。
+    """
+    document = {
+        "SchemaVersion": 2,
+        "ArtifactName": "demo-service:0.2.0",
+        "ArtifactType": "container_image",
+        "Results": [{"Target": "demo-service:0.2.0 (alpine 3.19)", "Vulnerabilities": []}],
+    }
+
+    scan = parse_document(document)
+
+    assert scan.vulnerabilities == []
+    assert scan.no_targets is False
+
+
+def test_検出があればno_targetsにしない(fixtures_dir):
+    scan = load_scan(fixtures_dir / "trivy_sample.json")
+
+    assert scan.no_targets is False
+
+
+def test_Trivy固有のキーが少なすぎれば入力エラーにする():
+    """`SchemaVersion` だけのような入力まで Trivy と見なさない。"""
+    with pytest.raises(InputError, match="Trivy の JSON 出力ではないようです"):
+        parse_document({"SchemaVersion": 2})
+
+
+def test_Resultsがあれば従来どおり1つで判定する():
+    """`Results` だけを持つ最小の入力は、これまでどおり Trivy として読む。"""
+    document = {"Results": [{"Target": "demo", "Vulnerabilities": []}]}
+
+    scan = parse_document(document)
+
+    assert scan.vulnerabilities == []

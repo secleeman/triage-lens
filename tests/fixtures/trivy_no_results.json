@@ -1,0 +1,19 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.74.0"
+  },
+  "ReportID": "00000000-0000-0000-0000-000000000000",
+  "CreatedAt": "2026-08-30T14:02:25.65920739Z",
+  "ArtifactID": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "ArtifactName": ".",
+  "ArtifactType": "repository",
+  "Metadata": {
+    "RepoURL": "https://example.invalid/demo-org/demo-service",
+    "Branch": "main",
+    "Commit": "0000000000000000000000000000000000000000",
+    "CommitMsg": "chore: demo commit",
+    "Author": "Demo Author <demo@example.invalid>",
+    "Committer": "Demo Author <demo@example.invalid>"
+  }
+}

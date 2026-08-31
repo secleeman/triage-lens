@@ -443,3 +443,83 @@ def test_部品表だけでもfail_onの終了コードは変えない(fixtures_
         )
 
     assert code == EXIT_OK
+
+
+# --------------------------------------------------------------------------
+# スキャナが対象を1つも認識しなかった入力
+# --------------------------------------------------------------------------
+
+
+def test_対象を認識できていないとレポートに書く(fixtures_dir, tmp_path):
+    """0件で緑になったことを「安全」と読ませない。"""
+    output = tmp_path / "report.md"
+
+    with make_client(_handler) as client:
+        code = main(
+            ["report", str(fixtures_dir / "trivy_no_results.json"), "-o", str(output)],
+            client=client,
+        )
+
+    report = output.read_text(encoding="utf-8")
+    assert code == EXIT_OK
+    assert "判定できる構成要素を1つも見つけていません" in report
+    assert "安全という意味ではなく" in report
+
+
+def test_対象を認識できていないと標準エラーにも出す(fixtures_dir, tmp_path, capsys):
+    """CI ではレポート本文を誰も読まない。緑のログにも1行残す。"""
+    with make_client(_handler) as client:
+        main(
+            ["report", str(fixtures_dir / "trivy_no_results.json"), "-o", str(tmp_path / "r.md")],
+            client=client,
+        )
+
+    assert "1つも見つけていません" in capsys.readouterr().err
+
+
+def test_対象を認識できていない注記は英語でも出る(fixtures_dir, tmp_path):
+    output = tmp_path / "report.md"
+
+    with make_client(_handler) as client:
+        main(
+            [
+                "report",
+                str(fixtures_dir / "trivy_no_results.json"),
+                "--lang",
+                "en",
+                "-o",
+                str(output),
+            ],
+            client=client,
+        )
+
+    report = output.read_text(encoding="utf-8")
+    assert "found nothing it could evaluate" in report
+    assert "does not mean it is safe" in report
+
+
+def test_検出がある入力に対象未認識の注記は出さない(fixtures_dir, tmp_path):
+    output = tmp_path / "report.md"
+
+    with make_client(_handler) as client:
+        main(
+            ["report", str(fixtures_dir / "trivy_sample.json"), "-o", str(output)],
+            client=client,
+        )
+
+    assert "1つも見つけていません" not in output.read_text(encoding="utf-8")
+
+
+def test_部品表だけの入力には注記を重ねない(fixtures_dir, tmp_path):
+    """SPDX の部品表は sbom_only 側で説明が付く。2つ並べると読み手が混乱する。"""
+    output = tmp_path / "report.md"
+
+    with make_client(_handler) as client:
+        main(
+            ["report", str(fixtures_dir / "spdx_sbom_only.json"), "-o", str(output)],
+            client=client,
+        )
+
+    report = output.read_text(encoding="utf-8")
+    assert "部品表（SBOM）のみ" in report
+    assert "1つも見つけていません" not in report

@@ -1,0 +1,31 @@
+# triage-lens を Trivy のプラグインとして呼び出すための定義。
+#
+# 実行ファイルは PATH 上の triage-lens を呼ぶだけの薄いラッパーで、
+# 判定そのものは triage-lens 本体が行う。OS 別のバイナリは作らない
+# （selector を書かなければ、この1エントリがすべての環境で使われる）。
+#
+# 版数は pyproject.toml と揃える。ずれていると tests/test_plugin.py が落ちる。
+name: "triage-lens"
+version: "0.8.0"
+repository: github.com/secleeman/triage-lens
+maintainer: secleeman
+
+# 出力モード（trivy image --format json --output plugin=triage-lens）に対応する。
+output: true
+
+summary: Prioritise findings with CISA KEV / EPSS / CVSS and write a Markdown triage report
+description: |-
+  A Trivy plugin that turns a scan result into a Markdown triage report,
+  ordered by CISA KEV listing, EPSS and CVSS. None of those data sources
+  needs an API key.
+
+  Usage: trivy triage-lens TARGET [OPTIONS]
+     or: trivy image --format json --output plugin=triage-lens TARGET
+
+  Requires the triage-lens CLI on PATH (pip install 'triage-lens>=0.8.0').
+
+platforms:
+  # selector を書かないと、どの OS / アーキテクチャでもこの定義が使われる。
+  # 中身は Python スクリプトなので、OS 別に分ける理由がない。
+  - uri: ./trivy-triage-lens.py
+    bin: ./trivy-triage-lens.py

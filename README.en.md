@@ -186,6 +186,18 @@ triage-lens report sbom.cdx.json --lang en -o triage-report.md
 Without `--lang en` the report is written in Japanese, which is the default.
 Omit `-o` to print to standard output.
 
+#### Piping the scan result in
+
+You do not have to write the scan result to a file first. **Pass `-` as the input
+to read from standard input.**
+
+```bash
+trivy image --format json sample-app:1.4.0 | triage-lens report - --lang en -o triage-report.md
+```
+
+The same formats are accepted and still detected automatically. For the same
+content, both routes produce the same report.
+
 | Option | Description | Default |
 | --- | --- | --- |
 | `-o`, `--output` | Output Markdown file | standard output |
@@ -260,7 +272,7 @@ jobs:
           output: trivy.json
 
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.7.1
+        uses: secleeman/triage-lens@v0.8.0
         with:
           scan-file: trivy.json
           lang: en
@@ -301,13 +313,92 @@ The only output is `report-path`, the path of the generated report.
 
 ```yaml
       - name: Build the triage report
-        uses: secleeman/triage-lens@v0.7.1
+        uses: secleeman/triage-lens@v0.8.0
         with:
           scan-file: trivy.json
           ai: 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+## Using it as a Trivy plugin
+
+You can call triage-lens straight from Trivy.
+
+> **This is experimental.** Trivy's own "output mode" is marked EXPERIMENTAL
+> upstream and may change without preserving backwards compatibility.
+
+### Install
+
+```bash
+trivy plugin install github.com/secleeman/triage-lens@v0.8.0
+```
+
+**You also need the triage-lens CLI itself.** The plugin is a thin wrapper that
+calls `triage-lens` on your PATH.
+
+```bash
+pip install 'triage-lens>=0.8.0'
+```
+
+Reading from standard input landed in 0.8.0, so older versions will not work.
+
+### Two ways to call it
+
+**Scan and report in one command:**
+
+```bash
+trivy triage-lens sample-app:1.4.0 --lang en -o triage-report.md
+```
+
+This runs `trivy image --format json` internally and triages the result.
+
+**Take the output of a scan you are already running:**
+
+```bash
+trivy image --format json --output plugin=triage-lens   --output-plugin-arg "--lang en -o triage-report.md --fail-on p1" sample-app:1.4.0
+```
+
+This one also works with `--format cyclonedx`.
+
+### Passing options
+
+Every `triage-lens report` option works (`-o`, `--lang`, `--top`, `--fail-on`,
+`--ai`, ...). In the one-command form put them after the target; in output mode
+pass them together through `--output-plugin-arg`.
+
+#### Exit codes behave differently depending on how you call it
+
+**Only the one-command form gives you the `--fail-on` exit code unchanged.**
+
+| How you call it | Does failure propagate? | Is the exit code preserved? |
+| --- | --- | --- |
+| `trivy triage-lens <target>` | ✅ | ✅ returned as-is |
+| `--output plugin=triage-lens` | ✅ | ❌ **flattened by Trivy** |
+
+When a plugin exits non-zero in output mode, Trivy treats that as its own error,
+prints `FATAL ... plugin error: exit status N` and **exits with its own code**.
+So you cannot tell "a P0 was found" (1) from "input error" (2) or "external data
+could not be fetched" (3). CI logs show it as a fatal error rather than as
+vulnerabilities found.
+
+**If your CI depends on the exit code, use a pipe instead** - there you get the
+`triage-lens` exit code directly.
+
+```bash
+trivy image --format json sample-app:1.4.0 | triage-lens report - --lang en --fail-on p1
+```
+
+### Things worth knowing
+
+- **The one-command form only runs `trivy image`.** To triage a filesystem or an
+  SBOM, produce the scan with `trivy fs` / `trivy sbom` and pass it in through
+  output mode or a pipe
+- **Linux and macOS are what this is tested on.** The plugin executable is a Python
+  script started through its shebang, so it does not work on Windows. There, install
+  the CLI with `pip install triage-lens` and pipe into it instead
+- If your Trivy config file sets `triage-lens` as an output plugin and you also use
+  the one-command form, the calls would loop — the plugin stops with an error instead
 
 ## AI-generated remediation notes (`--ai`)
 
@@ -663,7 +754,7 @@ Tests never reach the network — every external call is mocked.
 GitHub Actions runs the tests and lint on Python 3.11 / 3.12 / 3.13 for every push
 and pull request.
 
-## What this version (v0.7.1) can and cannot do
+## What this version (v0.8.0) can and cannot do
 
 It can:
 
@@ -675,6 +766,8 @@ It can:
 - Add AI-generated remediation notes (`--ai`, only when an API key is set)
 - Fail the build on serious findings (`--fail-on`)
 - Run inside GitHub Actions as a composite action
+- **Run as a Trivy plugin** (`trivy triage-lens <target>` / `--output plugin=`)
+- **Read from standard input** (`report -`, so you can pipe straight in)
 - **Split runtime and development-only dependencies** when the input says which is which
 - **Recommend actions per package** - what to upgrade, how far, and how much it clears
 
@@ -689,6 +782,8 @@ It cannot yet:
 - Produce reports in languages other than Japanese and English
 - Use a config file or a web UI
 - Have the AI produce patches or open fix pull requests
+- Run the plugin on Windows (its executable is a shebang-started Python script)
+- Distinguish exit codes through the plugin's output mode (Trivy flattens them)
 
 ## Bug reports
 

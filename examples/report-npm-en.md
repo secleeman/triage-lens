@@ -1,7 +1,7 @@
 # Vulnerability Triage Report
 
 - Target: demo-shop@1.0.0
-- Generated: 2026-08-30 15:12
+- Generated: 2026-08-31 11:24
 - Criteria: listed in CISA KEV / EPSS >= 0.1 / CVSS >= 7.0
 
 ## Summary

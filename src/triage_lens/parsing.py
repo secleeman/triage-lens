@@ -1,12 +1,16 @@
-"""入力ファイルを読むときの共通処理。
+"""入力を読むときの共通処理。
 
-Trivy JSON と CycloneDX で共通の「ファイルを読む」「値を安全に取り出す」部分を
+Trivy JSON と CycloneDX で共通の「入力を読む」「値を安全に取り出す」部分を
 ここにまとめる。形式ごとの解釈は各モジュール（`trivy` / `cyclonedx`）に置く。
+
+入力元はファイルと標準入力の2つがあるが、読み終えたあとの扱いは同じにする
+（同じ中身なら、どちらから来ても同じレポートになる）。
 """
 
 import json
 import math
 import re
+import sys
 from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
@@ -18,16 +22,71 @@ from .models import Vulnerability
 #: 確実に大小を比較できるバージョン表記（数字とドットだけ）
 SIMPLE_VERSION = re.compile(r"\d+(?:\.\d+)*")
 
+#: 入力パスにこれを指定すると標準入力から読む（UNIX の慣習に合わせる）
+STDIN_PATH = "-"
+
+#: エラー文で標準入力を指すときの表記
+STDIN_LABEL = "標準入力"
+
 
 def read_json_document(path: str | Path) -> Any:
-    """JSON ファイルを読み込んでパース結果を返す。
+    """JSON を読み込んでパース結果を返す。
 
-    読めない・JSON として壊れている場合は `InputError` を送出する
-    （利用者にスタックトレースを見せないため）。
+    入力パスが `-` なら標準入力から読む。読めない・JSON として壊れている
+    場合は `InputError` を送出する（利用者にスタックトレースを見せないため）。
     """
-    path = Path(path)
+    if str(path) == STDIN_PATH:
+        return _parse_json(read_stdin_text(), STDIN_LABEL)
+    return _parse_json(_read_file_text(Path(path)), str(path))
+
+
+def read_stdin_text() -> str:
+    """標準入力を最後まで読み切って返す。
+
+    読み切ることが仕様上の要件になる。Trivy の output mode は
+    スキャン結果を標準入力で渡してくるが、受け取り側が読み切る前に終了すると
+    Trivy がハングする。途中で諦めず、まず全部読んでから中身を判断する。
+
+    文字コードの解釈も自分で行う（`sys.stdin` のテキスト層に任せると、
+    端末の文字コード設定によって読めたり読めなかったりする）。
+    """
+    stream = getattr(sys.stdin, "buffer", None)
+    if stream is None:
+        raise InputError("標準入力を読み込めませんでした（標準入力がありません）")
+
+    if _is_interactive(sys.stdin):
+        # 読みにいくと EOF を待って止まり、利用者にはハングしたように見える。
+        raise InputError(
+            "標準入力から読む指定（-）ですが、データが渡されていません。"
+            "`trivy image --format json <対象> | triage-lens report -` のように"
+            "パイプでつないでください。"
+        )
+
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = stream.read()
+    except OSError as exc:
+        raise InputError(f"標準入力を読み込めませんでした（{exc}）") from exc
+
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputError(
+            "標準入力を UTF-8 のテキストとして読み込めませんでした"
+            "（テキストではないデータが渡されていませんか）"
+        ) from exc
+
+
+def _is_interactive(stream: Any) -> bool:
+    """端末に繋がっているか。判断できない場合はパイプ扱いにする。"""
+    try:
+        return bool(stream.isatty())
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _read_file_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise InputError(f"入力ファイルが見つかりません: {path}") from exc
     except UnicodeDecodeError as exc:
@@ -38,16 +97,19 @@ def read_json_document(path: str | Path) -> Any:
     except OSError as exc:
         raise InputError(f"入力ファイルを読み込めませんでした: {path} ({exc})") from exc
 
+
+def _parse_json(raw: str, source: str) -> Any:
+    """読み込んだテキストを JSON として解釈する。`source` はエラー文に出す入力元。"""
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
         raise InputError(
-            f"JSON として読み込めませんでした: {path} （{exc.msg} / {exc.lineno}行目）"
+            f"JSON として読み込めませんでした: {source} （{exc.msg} / {exc.lineno}行目）"
         ) from exc
     except RecursionError as exc:
         # 入れ子が深すぎる JSON。放っておくとトレースバックが利用者に出てしまう。
         raise InputError(
-            f"JSON の入れ子が深すぎて読み込めませんでした: {path}"
+            f"JSON の入れ子が深すぎて読み込めませんでした: {source}"
             "（スキャナの出力ではないファイルを指定していませんか）"
         ) from exc
 

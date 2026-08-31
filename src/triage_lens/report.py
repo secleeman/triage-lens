@@ -64,6 +64,7 @@ def render_report(
     scope_known: bool = False,
     dev_property_used: bool = False,
     sbom_only: bool = False,
+    no_targets: bool = False,
 ) -> str:
     """優先度付きの脆弱性一覧から Markdown レポートを組み立てる。
 
@@ -85,6 +86,7 @@ def render_report(
     **区別の有無は優先度には影響しない**（表示の分け方だけが変わる）。
 
     `sbom_only` は、入力が部品表だけで脆弱性の一覧を含んでいなかったかどうか。
+    `no_targets` は、スキャナが判定できる構成要素を1つも見つけなかったかどうか。
     真なら冒頭に注記を出す。SPDX のように脆弱性を書く場所がほとんど無い形式では
     「検出0件」が普通の結果になり、そのままでは「安全だった」と読まれるため。
     """
@@ -111,6 +113,10 @@ def render_report(
     # 取得の失敗ではないため、警告の印（⚠️）は付けない。
     if sbom_only:
         lines += [f"> {text('note_sbom_only')}", ""]
+
+    # 部品表だけの入力は sbom_only 側で説明が付くため、重ねて出さない。
+    if no_targets and not sbom_only:
+        lines += [f"> {text('note_no_targets')}", ""]
 
     # 区別できないことは異常ではないので、警告の印（⚠️）は付けない。
     # 検出が無いときは分ける対象そのものが無いため出さない。

@@ -40,6 +40,12 @@ _JA: dict[str, str] = {
         "`trivy sbom <ファイル> --format json` でこの SBOM をスキャンした出力を渡すと、"
         "優先順位を付けられます。"
     ),
+    # スキャナが対象を1つも認識しなかった入力
+    "note_no_targets": (
+        "スキャナはこの対象から判定できる構成要素を1つも見つけていません。"
+        "「検出0件」は安全という意味ではなく、"
+        "スキャン対象やスキャナの設定を見直す必要がある可能性があります。"
+    ),
     # 本番依存 / 開発依存の区別
     "note_scope_unknown": (
         "この入力には本番依存 / 開発依存を区別する情報が含まれていないため、"
@@ -162,6 +168,11 @@ _EN: dict[str, str] = {
         "Zero findings does not mean there are none. "
         "Run `trivy sbom <file> --format json` on this SBOM and pass that output "
         "instead to get a prioritised report."
+    ),
+    "note_no_targets": (
+        "The scanner found nothing it could evaluate in this target. "
+        "Zero findings does not mean it is safe - it may mean the scan target or the "
+        "scanner configuration needs to be revisited."
     ),
     "note_scope_unknown": (
         "This input carries no information distinguishing runtime from development "

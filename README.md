@@ -189,6 +189,18 @@ triage-lens report trivy-result.json --lang en -o triage-report-en.md
 
 `-o` を省略すると標準出力に表示します。
 
+#### パイプで直接渡す
+
+スキャン結果をファイルに落とさずに渡せます。**入力に `-` を指定すると
+標準入力から読みます。**
+
+```bash
+trivy image --format json sample-app:1.4.0 | triage-lens report - -o triage-report.md
+```
+
+読めるものはファイルのときと同じで、形式も自動判別されます。同じ中身なら、
+どちらの経路で渡しても同じレポートになります。
+
 | オプション | 説明 | 既定値 |
 | --- | --- | --- |
 | `-o`, `--output` | 出力先の Markdown ファイル | 標準出力 |
@@ -260,7 +272,7 @@ jobs:
           output: trivy.json
 
       - name: トリアージレポートを作る
-        uses: secleeman/triage-lens@v0.7.1
+        uses: secleeman/triage-lens@v0.8.0
         with:
           scan-file: trivy.json
           fail-on: p1
@@ -299,13 +311,92 @@ jobs:
 
 ```yaml
       - name: トリアージレポートを作る
-        uses: secleeman/triage-lens@v0.7.1
+        uses: secleeman/triage-lens@v0.8.0
         with:
           scan-file: trivy.json
           ai: 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+## Trivy のプラグインとして使う
+
+Trivy 本体のコマンドから直接呼べます。
+
+> **これは実験的な機能です。** Trivy 側の「output mode」自体が公式に
+> EXPERIMENTAL とされており、後方互換を保たずに変わる可能性があります。
+
+### 入れる
+
+```bash
+trivy plugin install github.com/secleeman/triage-lens@v0.8.0
+```
+
+**triage-lens 本体を別に入れておく必要があります。** プラグインは PATH 上の
+`triage-lens` を呼ぶだけの薄いラッパーです。
+
+```bash
+pip install 'triage-lens>=0.8.0'
+```
+
+標準入力からの読み込みに対応したのが 0.8.0 のため、それより古いと動きません。
+
+### 2つの呼び方
+
+**スキャンからレポートまで1コマンドで済ませる:**
+
+```bash
+trivy triage-lens sample-app:1.4.0 -o triage-report.md
+```
+
+内部で `trivy image --format json` を実行し、その結果をトリアージします。
+
+**すでに走っているスキャンの出力を受け取る:**
+
+```bash
+trivy image --format json --output plugin=triage-lens   --output-plugin-arg "-o triage-report.md --fail-on p1" sample-app:1.4.0
+```
+
+こちらは `--format cyclonedx` でも使えます。
+
+### オプションの渡し方
+
+`triage-lens report` のオプションがそのまま使えます（`-o` / `--lang` / `--top` /
+`--fail-on` / `--ai` など）。1コマンドの形では対象名の後ろに並べ、
+output mode では `--output-plugin-arg` にまとめて渡します。
+
+#### 終了コードの扱いは呼び方で変わります
+
+**`--fail-on` の終了コードをそのまま受け取れるのは、1コマンドの形だけです。**
+
+| 呼び方 | 失敗は伝わるか | 終了コードが保たれるか |
+| --- | --- | --- |
+| `trivy triage-lens <対象>` | ✅ | ✅ そのまま返ります |
+| `--output plugin=triage-lens` | ✅ | ❌ **Trivy 側で丸められます** |
+
+output mode でプラグインが 0 以外で終わると、Trivy はそれを自分のエラーとして
+扱い、`FATAL ... plugin error: exit status N` と出したうえで**自分の終了コードで
+終わります**。そのため「P0 があった（1）」「入力エラー（2）」「外部データを
+取得できなかった（3）」の区別が利用者まで届きません。CI のログにも
+「脆弱性を検出した」ではなく「Fatal error」として出ます。
+
+**CI で終了コードを使い分けたい場合は、パイプの形を使ってください。**
+`triage-lens` の終了コードがそのまま出ます。
+
+```bash
+trivy image --format json sample-app:1.4.0 | triage-lens report - --fail-on p1
+```
+
+### 気をつけること
+
+- **1コマンドの形が行うのは `trivy image` のスキャンだけです。** ファイルシステムや
+  SBOM を対象にしたい場合は、`trivy fs` / `trivy sbom` の出力を output mode か
+  パイプで渡してください
+- **動作を確認しているのは Linux と macOS です。** プラグインの実行ファイルは
+  シェバンで起動される Python スクリプトのため、Windows では動きません。
+  Windows では `pip install triage-lens` した本体をパイプで使ってください
+- Trivy の設定ファイルで output plugin に `triage-lens` を指定したまま
+  1コマンドの形を使うと呼び出しが循環しますが、その場合はエラーで止まります
 
 ## AI による対応方針コメント（`--ai`）
 
@@ -670,7 +761,7 @@ triage-lens は**依存関係にその版があるかどうか**しか見てい�
 GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 で
 テストと lint が実行されます。
 
-## この版（v0.7.1）でできること・できないこと
+## この版（v0.8.0）でできること・できないこと
 
 できること:
 
@@ -682,6 +773,8 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 - AI による対応方針コメント（`--ai`。APIキーを設定した場合のみ）
 - 深刻な検出があったときに CI を止めること（`--fail-on`）
 - GitHub Actions への組み込み（composite action）
+- **Trivy のプラグインとしての利用**（`trivy triage-lens <対象>` / `--output plugin=`）
+- **標準入力からの読み込み**（`report -`。パイプで直接渡せます）
 - **本番依存 / 開発依存を分けた表示**（入力にその情報がある場合）
 - **パッケージ単位の推奨アクション**（どれをどこまで上げれば何件片付くか）
 
@@ -696,6 +789,8 @@ GitHub Actions で push / Pull Request のたびに Python 3.11 / 3.12 / 3.13 �
 - 日英以外の言語
 - 設定ファイル / Web UI
 - AI にパッチや修正 PR を作らせること
+- Windows でのプラグインの実行（実行ファイルがシェバン起動の Python スクリプトのため）
+- プラグインの出力モードで終了コードを使い分けること（Trivy 側で丸められます）
 
 ## バグ報告
 

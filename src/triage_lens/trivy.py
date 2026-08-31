@@ -19,9 +19,45 @@ _UNSUPPORTED_FORMAT_MESSAGE = (
 )
 
 
+#: Trivy の Report がトップレベルに持つキー（Trivy 0.74.0 の出力で確認）。
+#: 構造体の定義では全項目に omitempty / omitzero が付いており、
+#: 「必ずある」と言い切れるキーが1つも無い。そのため単独のキーでは判定せず、
+#: いくつ揃っているかで見る。
+_TRIVY_KEYS = frozenset(
+    {
+        "SchemaVersion",
+        "Trivy",
+        "ReportID",
+        "CreatedAt",
+        "ArtifactID",
+        "ArtifactName",
+        "ArtifactType",
+        "Metadata",
+        "Results",
+    }
+)
+
+#: Trivy 出力とみなすのに必要なキーの数。
+#: 検出0件の実際の出力には8個ある。偶然の一致を避けつつ、
+#: 将来 Trivy が項目を減らしても追随できる程度に低くしてある。
+_TRIVY_KEY_THRESHOLD = 3
+
+
 def looks_like_trivy(document: Any) -> bool:
-    """Trivy の JSON 出力かどうかを判定する。"""
-    return isinstance(document, dict) and "Results" in document
+    """Trivy の JSON 出力かどうかを判定する。
+
+    `Results` の有無だけでは判定できない。Trivy は検出が0件のとき
+    `Results` をキーごと出力しないため（Report 構造体の `json:",omitempty"`）、
+    きれいなプロジェクトを `trivy fs --format json` にかけた出力には
+    `Results` が現れない。そこで弾くと、正当な出力を「Trivy の出力ではない」と
+    誤って拒否してしまう。
+    """
+    if not isinstance(document, dict):
+        return False
+    # `Results` があれば従来どおりその場で Trivy と判断する。
+    if "Results" in document:
+        return True
+    return len(_TRIVY_KEYS.intersection(document)) >= _TRIVY_KEY_THRESHOLD
 
 
 def load_scan(path: str | Path) -> ScanInput:
@@ -58,7 +94,13 @@ def parse_scan(document: Any) -> ScanInput:
             "スキャン結果のファイルが壊れていないか確認してください。"
         ) from exc
 
-    return ScanInput(artifact_name=artifact_name, vulnerabilities=vulnerabilities)
+    # 対象を1つも認識していないのか、認識したうえで0件だったのかを区別する。
+    # 前者を「脆弱性が無い」と読ませないため、レポートに注記を出す材料にする。
+    return ScanInput(
+        artifact_name=artifact_name,
+        vulnerabilities=vulnerabilities,
+        no_targets=not results,
+    )
 
 
 def _collect_vulnerabilities(results: list[Any]) -> list[Vulnerability]:
