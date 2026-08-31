@@ -1,13 +1,36 @@
 # triage-lens
 
-A CLI tool that takes a scanner's vulnerability list, prioritises it using public data,
-and produces a **triage report (Markdown) that tells you what to fix first**.
+**An open, explainable vulnerability prioritisation engine.** Scanner findings and
+public threat data go in; reproducible triage decisions come out, as a Markdown
+report that shows its reasoning.
 Install with a single line: `pip install triage-lens`.
 
 *日本語: [README.md](https://github.com/secleeman/triage-lens/blob/main/README.md)*
 
-Priorities are decided mechanically from CISA KEV, EPSS and CVSS. None of these
-require an API key, so there is nothing to configure (see [Data sources](#data-sources)).
+## What this engine commits to
+
+Calling something a decision engine only means anything if the decisions are open
+to inspection. These four are part of the specification, not implementation details.
+
+- **The decision is deterministic.** P0-P3 is derived mechanically from the CISA KEV,
+  EPSS and CVSS values alone. The same input and the same public data always produce
+  the same answer. The rules are published as a table and the thresholds live in one
+  place in the source (see [How priorities are assigned](#how-priorities-are-assigned)).
+- **The AI does not decide anything.** With `--ai`, all the model writes is prose
+  explaining what to do about an already-decided priority. It never sets a priority
+  and never overrides one (see
+  [The AI does not decide the priority](#the-ai-does-not-decide-the-priority)).
+- **Reachability is not assessed.** All that is checked is whether an affected version
+  is present in your dependency tree, not whether the affected code is ever called.
+  What the tool cannot do is not advertised as something it can
+  (see [What this report cannot tell you](#what-this-report-cannot-tell-you)).
+- **No decision is made from data that is missing.** A value that could not be fetched,
+  or could not be read out of the input, is reported as **"Unknown"** - never as "low".
+  "No fix available" and "Unknown" are likewise kept apart (see
+  ["No fix available" vs "Unknown"](#no-fix-available-vs-unknown)).
+
+None of the public data it relies on (CISA KEV, EPSS, CVSS) requires an API key,
+so there is nothing to configure (see [Data sources](#data-sources)).
 
 Optionally, `--ai` adds a one- or two-line note to each finding saying what to
 actually do about it. That part uses the Claude API, so it needs your own API key
@@ -790,10 +813,14 @@ It cannot yet:
 Bug reports are welcome via [GitHub Issues](https://github.com/secleeman/triage-lens/issues). Including the input
 format, the command you ran, and the message you saw makes them easier to act on.
 
-**We do not reply in the issue threads.** Every report is read, and the response
-arrives as a fix in a commit and in the release notes
-([ROADMAP](https://github.com/secleeman/triage-lens/blob/main/docs/ROADMAP.md)). An issue may be closed without a
-comment once it has been addressed.
+**Issues get a reply from `secleeman`.** What cannot be promised is whether or when
+anything gets fixed - this is maintained by one person in their spare time, so a reply
+may be slow, and it may be "not planned". Whatever does get fixed also shows up in the
+commits and the release notes
+([ROADMAP](https://github.com/secleeman/triage-lens/blob/main/docs/ROADMAP.md)).
+
+**Please do not report vulnerabilities in an issue.** Use the private channel described
+in [SECURITY.md](https://github.com/secleeman/triage-lens/blob/main/SECURITY.md) instead.
 
 ## License
 
